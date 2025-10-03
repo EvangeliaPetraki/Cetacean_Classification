@@ -48,11 +48,11 @@ import torchaudio
 # --- Waveform augmentations ---
 def augment_waveform(x, p=0.5):
     if random.random() < p:  # small Gaussian noise
-        x = x + 0.003 * torch.randn_like(x)
+        x = x + 0.001 * torch.randn_like(x)
     if random.random() < p:  # small gain jitter
-        x = x * random.uniform(0.85, 1.15)
+        x = x * random.uniform(0.95, 1.05)
     if random.random() < p:  # small circular time shift (±8% window)
-        shift = int(random.uniform(-0.08, 0.08) * x.shape[1])
+        shift = int(random.uniform(-0.02, 0.02) * x.shape[1])
         x = torch.roll(x, shifts=shift, dims=1)
     return x
 
@@ -99,7 +99,8 @@ class MelSpecDataset(torch.utils.data.Dataset):
 
         m = self.mel(x)              # (n_mels, time)
         if self.augment:             # SpecAugment only on train
-            if random.random() < 0.8: m = self.freq_mask(m)
+            if random.random() < 0.8: 
+                m = self.freq_mask(m)
             if random.random() < 0.8: m = self.time_mask(m)
 
         # m = m.unsqueeze(0)           # (1, n_mels, time) -> conv2d input
