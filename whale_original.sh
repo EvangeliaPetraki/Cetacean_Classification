@@ -9,4 +9,4 @@
 
 source ~/myenv/bin/activate
 
-python3 ~/E/Whale_Project/whale_original.py
+python3 ~/E/Cetacean_Classification/whale_original.py

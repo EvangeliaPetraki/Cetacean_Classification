@@ -134,7 +134,10 @@ def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Trai
     plt.show()
 
 
-file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
+#file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
+file = "/home/f/fratzeska/E/Cetacean_Classification/_common-frecuent"
+
+
 results_tot = {}
 # def findOccurrences(s, ch):
 #     return [i for i, letter in enumerate(s) if letter == ch]
