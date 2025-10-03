@@ -105,7 +105,7 @@ class MelSpecDataset(torch.utils.data.Dataset):
         # m = m.unsqueeze(0)           # (1, n_mels, time) -> conv2d input
         return m, y
 
-def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Training Progress"):
+def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Training Progress", fname="training_curves.png"):
     epochs = range(1, len(loss_train) + 1)
 
     plt.figure(figsize=(12, 5))
@@ -130,8 +130,11 @@ def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Trai
     plt.legend()
     plt.grid()
 
-    plt.suptitle(title)
-    plt.show()
+    # plt.suptitle(title)
+    # plt.show()
+    plt.tight_layout()
+    plt.savefig(fname, dpi=300)   # save as PNG file
+    plt.close()
 
 
 #file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
@@ -999,5 +1002,5 @@ res = np.array([loss_train, loss_eval, acc_train, acc_eval])
 namefile = f'MLP_S+Mel{J,Q}_{batch_size}'
 np.save(namefile, res)
 
-plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="ResNet Mel Training")
+plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="ResNet Mel Training", fname="resnet_mel_training.png")
 
