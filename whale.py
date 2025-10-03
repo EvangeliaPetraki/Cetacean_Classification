@@ -98,10 +98,10 @@ class MelSpecDataset(torch.utils.data.Dataset):
             x = augment_waveform(x)
 
         m = self.mel(x)              # (n_mels, time)
-        if self.augment:             # SpecAugment only on train
-            if random.random() < 0.8: 
-                m = self.freq_mask(m)
-            if random.random() < 0.8: m = self.time_mask(m)
+        #if self.augment:             # SpecAugment only on train
+         #   if random.random() < 0.8: 
+          #      m = self.freq_mask(m)
+           # if random.random() < 0.8: m = self.time_mask(m)
 
         # m = m.unsqueeze(0)           # (1, n_mels, time) -> conv2d input
         return m, y
