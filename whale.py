@@ -1,5 +1,7 @@
 # This file is with the augmentations. 
 
+print('~~~~~~~~      This is where we tried adding only one augmentation: Waveform only        ~~~~~~~~', flush = True)  
+
 import math
 import numpy as np
 import torch
