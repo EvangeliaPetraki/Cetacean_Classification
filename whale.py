@@ -1,6 +1,6 @@
 # This file is with the augmentations. 
 
-print('~~~~~~~~      This is where we try only SpecAugment (augmentation-wise) and we lower the learning rate (3e-4 for all models while it was 0.01 before) and adding a dropout layer in the MLP (I have marked the new layers)~~~~~~~~', flush = True)  
+print('~~~~~~~~      This is where we remove both augmentations the learning rate is 3e-4 and I keep a dropout layer in the MLP (I have marked the new layers)~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
@@ -96,16 +96,16 @@ class MelSpecDataset(torch.utils.data.Dataset):
         y = self.y[idx]
 
         # light waveform augs ONLY for training
-        if self.augment:
-            x = augment_waveform(x)
+        # if self.augment:
+        #     x = augment_waveform(x)
 
         m = self.mel(x)              # (n_mels, time)
         
-        if self.augment:             # SpecAugment only on train
-           if random.random() < 0.5: #I add a light spec augment  
-               m = self.freq_mask(m)
-           if random.random() < 0.5:
-               m = self.time_mask(m)
+        # if self.augment:             # SpecAugment only on train
+        #    if random.random() < 0.5: #I add a light spec augment  
+        #        m = self.freq_mask(m)
+        #    if random.random() < 0.5:
+        #        m = self.time_mask(m)
 
         # m = m.unsqueeze(0)           # (1, n_mels, time) -> conv2d input
         return m, y
