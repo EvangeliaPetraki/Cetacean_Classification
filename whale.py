@@ -750,7 +750,7 @@ class MLP(nn.Module):
     #     return out
 
     def forward(self, x): #this block is also to add the new dropout in the MLP . If you want to remove you have to remove all of it and uncomment the closk above
-        out = self.activation(self.linear(x))
+        out = self.activation(self.linear1(x))
         out = self.dropout(out)
         out = self.activation(self.linear2(out))
         out = self.dropout(out)
