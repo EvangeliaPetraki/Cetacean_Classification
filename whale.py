@@ -1,6 +1,6 @@
 # This file is with the augmentations. 
 
-print('~~~~~~~~      This is where we remove both augmentations the learning rate is 0.001 and I keep a dropout layer in the MLP (I have marked the new layers)~~~~~~~~', flush = True)  
+print('~~~~~~~~  I want to try with both augmentations once more - No dropout, no changes in the lr ~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
@@ -39,9 +39,9 @@ class AugmentedTensorDataset(Dataset):
         x = self.X[idx]
         label = self.y[idx]
 
-        # if self.augment:
+        if self.augment:
             # Apply waveform augmentation only if this is training
-            # x = augment_waveform(x.unsqueeze(0), self.sr).squeeze(0)
+            x = augment_waveform(x.unsqueeze(0), self.sr).squeeze(0)
 
         return x, label
 
@@ -96,16 +96,16 @@ class MelSpecDataset(torch.utils.data.Dataset):
         y = self.y[idx]
 
         # light waveform augs ONLY for training
-        # if self.augment:
-        #     x = augment_waveform(x)
+        if self.augment:
+            x = augment_waveform(x)
 
         m = self.mel(x)              # (n_mels, time)
         
-        # if self.augment:             # SpecAugment only on train
-        #    if random.random() < 0.5: #I add a light spec augment  
-        #        m = self.freq_mask(m)
-        #    if random.random() < 0.5:
-        #        m = self.time_mask(m)
+        if self.augment:             # SpecAugment only on train
+           if random.random() < 0.3: #I add a light spec augment  
+               m = self.freq_mask(m)
+           if random.random() < 0.3:
+               m = self.time_mask(m)
 
         # m = m.unsqueeze(0)           # (1, n_mels, time) -> conv2d input
         return m, y
@@ -545,17 +545,17 @@ class ResNet(nn.Module):
 model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
 model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
 model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
-learning_rate_mel = .01
+learning_rate_mel = .01 # <----- this is the original LR
 # learning_rate_mel = .001
 # learning_rate_mel = 3e-4 # <---- we lower the lr here
 optimizer_mel = torch.optim.AdamW(model_mel.parameters(), lr=learning_rate_mel,amsgrad= True, weight_decay= .001 )
 scheduler_mel = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_mel, 'min')
-learning_rate_1 = .01
+learning_rate_1 = .01 # <----- this is the original LR
 # learning_rate_1 = 3e-4 # <---- we lower the lr here
 # learning_rate_1 = 0.001
 optimizer_1 = torch.optim.AdamW(model_wst_1.parameters(), lr=learning_rate_1,amsgrad= True, weight_decay= .001 )
 scheduler_1 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_1, 'min')
-learning_rate_2 = .01
+learning_rate_2 = .01 # <----- this is the original LR
 # learning_rate_2 = 0.001
 # learning_rate_2 = 3e-4 # <---- we lower the lr here
 
@@ -731,36 +731,36 @@ val_final_load = DataLoader(val_final, batch_size=batch_size, shuffle=False)
 
 class MLP(nn.Module):
     def __init__(self):
-        # super(MLP, self).__init__()
-        # self.linear=nn.Linear(64,256)
-        # self.activation=nn.ReLU()
-        # self.linear2=nn.Linear(256,128)
-        # self.activation=nn.ReLU()
-        # self.linear3=nn.Linear(128,32)
+        super(MLP, self).__init__()
+        self.linear=nn.Linear(64,256)
+        self.activation=nn.ReLU()
+        self.linear2=nn.Linear(256,128)
+        self.activation=nn.ReLU()
+        self.linear3=nn.Linear(128,32)
 
-        super(MLP, self).__init__() #This whole block is to add the new dropout in the MLP. If you want to remove remove all of it and uncomment the block above
-        self.linear1 = nn.Linear(64, 256)
-        self.linear2 = nn.Linear(256, 128)
-        self.linear3 = nn.Linear(128, 32)
-        self.activation = nn.ReLU()
-        self.dropout = nn.Dropout(p=0.3)
+        # super(MLP, self).__init__() #This whole block is to add the new dropout in the MLP. If you want to remove remove all of it and uncomment the block above
+        # self.linear1 = nn.Linear(64, 256)
+        # self.linear2 = nn.Linear(256, 128)
+        # self.linear3 = nn.Linear(128, 32)
+        # self.activation = nn.ReLU()
+        # self.dropout = nn.Dropout(p=0.3)
         
 
-    # def forward(self, x):
-    #     out=self.linear(x)
-    #     out=self.activation(out)
-    #     out=self.linear2(out)
-    #     out=self.activation(out)
-    #     out=self.linear3(out)
-    #     return out
-
-    def forward(self, x): #this block is also to add the new dropout in the MLP . If you want to remove you have to remove all of it and uncomment the closk above
-        out = self.activation(self.linear1(x))
-        out = self.dropout(out)
-        out = self.activation(self.linear2(out))
-        out = self.dropout(out)
-        out = self.linear3(out)
+    def forward(self, x):
+        out=self.linear(x)
+        out=self.activation(out)
+        out=self.linear2(out)
+        out=self.activation(out)
+        out=self.linear3(out)
         return out
+
+    # def forward(self, x): #this block is also to add the new dropout in the MLP . If you want to remove you have to remove all of it and uncomment the closk above
+    #     out = self.activation(self.linear1(x))
+    #     out = self.dropout(out)
+    #     out = self.activation(self.linear2(out))
+    #     out = self.dropout(out)
+    #     out = self.linear3(out)
+    #     return out
 
 
 model_MLP = MLP().to(device)
