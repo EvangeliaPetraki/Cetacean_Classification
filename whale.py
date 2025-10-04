@@ -1,6 +1,6 @@
 # This file is with the augmentations. 
 
-print('~~~~~~~~      This is where we remove both augmentations the learning rate is 3e-4 and I keep a dropout layer in the MLP (I have marked the new layers)~~~~~~~~', flush = True)  
+print('~~~~~~~~      This is where we remove both augmentations the learning rate is 0.001 and I keep a dropout layer in the MLP (I have marked the new layers)~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
@@ -142,8 +142,8 @@ def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Trai
     plt.close()
 
 
-#file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
-file = "/home/f/fratzeska/E/Cetacean_Classification/_common-frecuent"
+file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
+# file = "/home/f/fratzeska/E/Cetacean_Classification/_common-frecuent"
 
 
 results_tot = {}
@@ -239,6 +239,7 @@ for root, dirs, files in os.walk(file):
                 print(f"Skipping {full_path}: {e}", flush = True)
 
             # If reading or processing the file fails, it prints a warning and skips the file.
+
 
 signal_len = np.array([x.shape[1]/srate_full_list[k] for (k,x) in enumerate(data_full_list)]) 
 
@@ -544,16 +545,20 @@ class ResNet(nn.Module):
 model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
 model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
 model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
-# learning_rate_mel = .01
-learning_rate_mel = 3e-4 # <---- we lower the lr here
+learning_rate_mel = .01
+# learning_rate_mel = .001
+# learning_rate_mel = 3e-4 # <---- we lower the lr here
 optimizer_mel = torch.optim.AdamW(model_mel.parameters(), lr=learning_rate_mel,amsgrad= True, weight_decay= .001 )
 scheduler_mel = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_mel, 'min')
-# learning_rate_1 = .01
-learning_rate_1 = 3e-4 # <---- we lower the lr here
+learning_rate_1 = .01
+# learning_rate_1 = 3e-4 # <---- we lower the lr here
+# learning_rate_1 = 0.001
 optimizer_1 = torch.optim.AdamW(model_wst_1.parameters(), lr=learning_rate_1,amsgrad= True, weight_decay= .001 )
 scheduler_1 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_1, 'min')
-# learning_rate_2 = .01
-learning_rate_2 = 3e-4 # <---- we lower the lr here
+learning_rate_2 = .01
+# learning_rate_2 = 0.001
+# learning_rate_2 = 3e-4 # <---- we lower the lr here
+
 optimizer_2 = torch.optim.AdamW(model_wst_2.parameters(), lr=learning_rate_2,amsgrad= True, weight_decay= .001 )
 scheduler_2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_2, 'min')
 
