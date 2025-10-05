@@ -339,6 +339,10 @@ df_X_no_duplicates = df_X.drop_duplicates(subset=df_X.iloc[:, 0:cut_point]) #rem
 X = torch.from_numpy(df_X_no_duplicates.iloc[:, 0:8000].values)
 y = df_X_no_duplicates.iloc[:, -1].values
 
+classes = np.unique(y)
+num_classes = len(classes)
+print(f"Detected {num_classes} classes", flush = True)
+
 batches = [64, 128, 256]
 
 #~~~~~~~~~~~~ FEATURE EXTRACTION ~~~~~~~~~~~~~~~
@@ -496,7 +500,7 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, in_channels=1, num_classes=10):
+    def __init__(self, block, layers, in_channels=1, num_classes=None):
         super(ResNet, self).__init__()
         self.in_channels = 16
         self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1, bias=False)
@@ -542,9 +546,9 @@ class ResNet(nn.Module):
         return x
 
 # Instantiate the model
-model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
-model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
-model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=32).to(device)
+model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
 learning_rate_mel = .01 # <----- this is the original LR
 # learning_rate_mel = .001
 # learning_rate_mel = 3e-4 # <---- we lower the lr here
@@ -634,6 +638,7 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
         loss_eval.append(loss_ep_eval/len(val_dataloader))
     
         print(f' validation accuracy = {acc}', flush = True)
+        scheduler.step(loss_eval[-1])
     
     res = np.array([loss_train, loss_eval, acc_train, acc_eval])
     
@@ -730,13 +735,13 @@ train_final_load = DataLoader(train_final, batch_size=batch_size, shuffle=True)
 val_final_load = DataLoader(val_final, batch_size=batch_size, shuffle=False)
 
 class MLP(nn.Module):
-    def __init__(self):
+    def __init__(self, in_dim, num_classes):
         super(MLP, self).__init__()
-        self.linear=nn.Linear(64,256)
+        self.linear=nn.Linear(in_dim,256)
         self.activation=nn.ReLU()
         self.linear2=nn.Linear(256,128)
         self.activation=nn.ReLU()
-        self.linear3=nn.Linear(128,32)
+        self.linear3=nn.Linear(128,num_classes)
 
         # super(MLP, self).__init__() #This whole block is to add the new dropout in the MLP. If you want to remove remove all of it and uncomment the block above
         # self.linear1 = nn.Linear(64, 256)
@@ -762,8 +767,10 @@ class MLP(nn.Module):
     #     out = self.linear3(out)
     #     return out
 
+# model_MLP = MLP().to(device)
+in_dim = 2 * num_classes
+model_MLP = MLP(in_dim, num_classes).to(device)
 
-model_MLP = MLP().to(device)
 
 criterion = nn.CrossEntropyLoss()
 learning_rate = .001
@@ -838,6 +845,9 @@ for epoch in range(num_epochs):
 
     if epoch%100==0:
         print(f' validation accuracy = {acc}', flush = True)
+    
+    scheduler.step(loss_eval[-1])
+
 res = np.array([loss_train, loss_eval, acc_train, acc_eval])
 
 namefile = f'S1+S2_{J,Q}_{batch_size}'
@@ -950,7 +960,10 @@ val_boh = TensorDataset(val_hard, y_testXX)
 train_hard_load = DataLoader(train_boh, batch_size=batch_size, shuffle=True)
 val_hard_load = DataLoader(val_boh, batch_size=batch_size, shuffle=False)
 
-model_MLP = MLP().to(device)
+# model_MLP = MLP().to(device)
+in_dim = 2 * num_classes
+model_MLP = MLP(in_dim, num_classes).to(device)
+
 
 criterion = nn.CrossEntropyLoss()
 learning_rate = .001
@@ -1025,6 +1038,8 @@ for epoch in range(num_epochs):
 
     if epoch%100==0:
         print(f' validation accuracy = {acc}', flush = True)
+    
+    scheduler.step(loss_eval[-1])
     
 res = np.array([loss_train, loss_eval, acc_train, acc_eval])
 
