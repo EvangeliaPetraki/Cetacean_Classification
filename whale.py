@@ -142,8 +142,8 @@ def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Trai
     plt.close()
 
 
-file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
-# file = "/home/f/fratzeska/E/Cetacean_Classification/_common-frecuent"
+# file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
+file = "/home/f/fratzeska/E/Cetacean_Classification/_common-frecuent"
 
 
 results_tot = {}
