@@ -1,6 +1,6 @@
 # This file is with the augmentations. 
 
-print('~~~~~~~~  I want to try with both augmentations once more - No dropout, no changes in the lr ~~~~~~~~', flush = True)  
+print('~~~~~~~~  Correct Classes, no augmentations ~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
