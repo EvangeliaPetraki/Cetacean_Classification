@@ -638,7 +638,7 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
         loss_eval.append(loss_ep_eval/len(val_dataloader))
     
         print(f' validation accuracy = {acc}', flush = True)
-        scheduler.step(loss_eval[-1])
+        # scheduler.step(loss_eval[-1])
     
     res = np.array([loss_train, loss_eval, acc_train, acc_eval])
     
@@ -846,7 +846,7 @@ for epoch in range(num_epochs):
     if epoch%100==0:
         print(f' validation accuracy = {acc}', flush = True)
     
-    scheduler.step(loss_eval[-1])
+    # scheduler.step(loss_eval[-1])
 
 res = np.array([loss_train, loss_eval, acc_train, acc_eval])
 
@@ -1039,7 +1039,7 @@ for epoch in range(num_epochs):
     if epoch%100==0:
         print(f' validation accuracy = {acc}', flush = True)
     
-    scheduler.step(loss_eval[-1])
+    # scheduler.step(loss_eval[-1])
     
 res = np.array([loss_train, loss_eval, acc_train, acc_eval])
 
