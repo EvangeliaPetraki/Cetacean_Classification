@@ -737,7 +737,7 @@ val_final_load = DataLoader(val_final, batch_size=batch_size, shuffle=False)
 class MLP(nn.Module):
     def __init__(self, in_dim, num_classes):
         super(MLP, self).__init__()
-        self.linear=nn.Linear(in_dim,256)
+        self.linear=nn.Linear(64,256)
         self.activation=nn.ReLU()
         self.linear2=nn.Linear(256,128)
         self.activation=nn.ReLU()
