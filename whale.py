@@ -1,6 +1,6 @@
 # This file is with the augmentations. 
 
-print('~~~~~~~~  I want to try with both augmentations once more - No dropout, no changes in the lr ~~~~~~~~', flush = True)  
+print('~~~~~~~~ (Light) Augmentations with 32 classes and 10 in the Resnet to see how it goes ~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
@@ -500,7 +500,7 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, in_channels=1, num_classes=None):
+    def __init__(self, block, layers, in_channels=1, num_classes=10):
         super(ResNet, self).__init__()
         self.in_channels = 16
         self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1, bias=False)
@@ -741,7 +741,7 @@ class MLP(nn.Module):
         self.activation=nn.ReLU()
         self.linear2=nn.Linear(256,128)
         self.activation=nn.ReLU()
-        self.linear3=nn.Linear(128,num_classes)
+        self.linear3=nn.Linear(128,32)
 
         # super(MLP, self).__init__() #This whole block is to add the new dropout in the MLP. If you want to remove remove all of it and uncomment the block above
         # self.linear1 = nn.Linear(64, 256)
