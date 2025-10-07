@@ -545,6 +545,7 @@ class ResNet(nn.Module):
 
         return x
 
+num_classes =32
 # Instantiate the model
 model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
 model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
@@ -769,6 +770,8 @@ class MLP(nn.Module):
 
 # model_MLP = MLP().to(device)
 in_dim = 2 * num_classes
+in_dim = 64
+num_classes = 32
 model_MLP = MLP(in_dim, num_classes).to(device)
 
 
@@ -962,6 +965,8 @@ val_hard_load = DataLoader(val_boh, batch_size=batch_size, shuffle=False)
 
 # model_MLP = MLP().to(device)
 in_dim = 2 * num_classes
+in_dim = 64
+num_classes =32
 model_MLP = MLP(in_dim, num_classes).to(device)
 
 
