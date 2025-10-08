@@ -1,5 +1,6 @@
+# This file is with the augmentations. 
 
-print('~~~~~~~~  8 Classes in MLP, 10 classes in Resnet, no augmentations. I want to understand wtf is going on with the fkin classes. Sorry for the crashout. We got this. We fking got this ~~~~~~~~', flush = True)  
+print('~~~~~~~~ (Light - very light) Augmentations with 32 classes and 10 in the Resnet to see how it goes (changed the function of the augment spectrogram) ~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
@@ -38,31 +39,31 @@ class AugmentedTensorDataset(Dataset):
         x = self.X[idx]
         label = self.y[idx]
 
-        # if self.augment:
+        if self.augment:
             # Apply waveform augmentation only if this is training
-            # x = augment_waveform(x.unsqueeze(0), self.sr).squeeze(0)
+            x = augment_waveform(x.unsqueeze(0), self.sr).squeeze(0)
 
         return x, label
 
 import torchaudio
 
 # --- Waveform augmentations ---
-def augment_waveform(x, p=0.5):
+def augment_waveform(x, p=0.2):
     if random.random() < p:  # small Gaussian noise
-        x = x + 0.001 * torch.randn_like(x)
+        x = x + 0.0005 * torch.randn_like(x)
     if random.random() < p:  # small gain jitter
-        x = x * random.uniform(0.95, 1.05)
+        x = x * random.uniform(0.98, 1.02)
     if random.random() < p:  # small circular time shift (±8% window)
-        shift = int(random.uniform(-0.02, 0.02) * x.shape[1])
+        shift = int(random.uniform(-0.005, 0.005) * x.shape[1])
         x = torch.roll(x, shifts=shift, dims=1)
     return x
 
 # --- Spectrogram augmentations ---
-def augment_spectrogram(spec, p=0.5):
+def augment_spectrogram(spec, p=0.2):
     if random.random() < p:
-        spec = torchaudio.transforms.FrequencyMasking(freq_mask_param=8)(spec)
+        spec = torchaudio.transforms.FrequencyMasking(freq_mask_param=3)(spec)
     if random.random() < p:
-        spec = torchaudio.transforms.TimeMasking(time_mask_param=20)(spec)
+        spec = torchaudio.transforms.TimeMasking(time_mask_param=8)(spec)
     return spec
 
 # from zipfile import ZipFile 
@@ -95,16 +96,17 @@ class MelSpecDataset(torch.utils.data.Dataset):
         y = self.y[idx]
 
         # light waveform augs ONLY for training
-        # if self.augment:
-            # x = augment_waveform(x)
+        if self.augment:
+            x = augment_waveform(x)
 
         m = self.mel(x)              # (n_mels, time)
         
-        # if self.augment:             # SpecAugment only on train
-        #    if random.random() < 0.3: #I add a light spec augment  
-        #        m = self.freq_mask(m)
-        #    if random.random() < 0.3:
-        #        m = self.time_mask(m)
+        if self.augment: # SpecAugment only on train
+            m = augment_spectrogram(m) #<- this is what I changed here
+           # if random.random() < 0.3: #I add a light spec augment  
+           #     m = self.freq_mask(m)
+           # if random.random() < 0.3:
+           #     m = self.time_mask(m)
 
         # m = m.unsqueeze(0)           # (1, n_mels, time) -> conv2d input
         return m, y
@@ -499,7 +501,7 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, in_channels=1, num_classes=10): 
+    def __init__(self, block, layers, in_channels=1, num_classes=10):
         super(ResNet, self).__init__()
         self.in_channels = 16
         self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1, bias=False)
@@ -544,8 +546,8 @@ class ResNet(nn.Module):
 
         return x
 
-# Instantiate the model
 num_classes =32
+# Instantiate the model
 model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
 model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
 model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
@@ -965,7 +967,7 @@ val_hard_load = DataLoader(val_boh, batch_size=batch_size, shuffle=False)
 # model_MLP = MLP().to(device)
 in_dim = 2 * num_classes
 in_dim = 64
-num_classes = 32
+num_classes =32
 model_MLP = MLP(in_dim, num_classes).to(device)
 
 
