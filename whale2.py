@@ -769,6 +769,8 @@ class MLP(nn.Module):
 
 # model_MLP = MLP().to(device)
 in_dim = 2 * num_classes
+in_dim = 64
+num_classes = 32
 model_MLP = MLP(in_dim, num_classes).to(device)
 
 
@@ -962,6 +964,8 @@ val_hard_load = DataLoader(val_boh, batch_size=batch_size, shuffle=False)
 
 # model_MLP = MLP().to(device)
 in_dim = 2 * num_classes
+in_dim = 64
+num_classes = 32
 model_MLP = MLP(in_dim, num_classes).to(device)
 
 
