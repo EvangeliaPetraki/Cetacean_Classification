@@ -545,6 +545,7 @@ class ResNet(nn.Module):
         return x
 
 # Instantiate the model
+num_classes =32
 model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
 model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
 model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
