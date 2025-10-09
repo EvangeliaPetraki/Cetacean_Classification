@@ -977,3 +977,26 @@ for seed in range(num_ensembles):
                f"{ensemble_dir}/val_logits_seed{seed}.pt")
 
 print("✅ All ensemble runs completed. Run ensemble_fusion.py to compute average accuracy.")
+
+ensemble_dir = "./ensemble_outputs"
+all_logits = []
+labels_ref = None
+
+for fname in os.listdir(ensemble_dir):
+    if fname.endswith(".pt"):
+        data = torch.load(os.path.join(ensemble_dir, fname))
+        all_logits.append(data["logits"])
+        if labels_ref is None:
+            labels_ref = data["labels"]
+
+if len(all_logits) == 0:
+    print("⚠️ No .pt files found in ensemble_outputs — did the ensemble loop finish correctly?")
+else:
+    # Stack and average logits across runs
+    logits_stack = torch.stack(all_logits)  # shape: [num_runs, num_samples, num_classes]
+    avg_logits = logits_stack.mean(dim=0)
+
+    # Compute ensemble accuracy
+    _, predictions = torch.max(avg_logits, dim=1)
+    accuracy = (predictions == labels_ref).float().mean().item() * 100
+    print(f"✅ Ensemble accuracy across {len(all_logits)} runs: {accuracy:.2f}%")
