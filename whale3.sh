@@ -4,7 +4,7 @@
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
 #SBATCH --partition=ampere
-#SBATCH --time=2:00:00
+#SBATCH --time=6:00:00
 
 
 source ~/myenv/bin/activate
