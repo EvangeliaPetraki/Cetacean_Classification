@@ -38,6 +38,13 @@ import time
 # file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
 file = "/home/f/fratzeska/E/Cetacean_Classification/_common-frecuent"
 
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
