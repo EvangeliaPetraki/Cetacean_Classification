@@ -957,7 +957,8 @@ for seed in range(num_ensembles):
     criterion = nn.CrossEntropyLoss()
     
 
-    num_epochs = 200
+    # num_epochs = 200
+    num_epochs = 500
     for epoch in range(num_epochs):
         model_MLP.train()
         for x, labels in train_final_load:
