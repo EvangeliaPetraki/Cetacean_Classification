@@ -1,0 +1,745 @@
+print('~~~~~~~~ Ensemble try 3 ~~~~~~~~', flush = True)  
+
+import math
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+import pandas as pd
+from torch import nn
+import torch.multiprocessing
+from torchvision import datasets, transforms
+from torchaudio.transforms import Resample
+import scipy.io.wavfile as wavfile
+import os
+import soundfile as sf
+from scipy.signal import resample
+# from torchcodec.decoders import AudioDecoder
+# decoder = AudioDecoder("C:/full/path/to/file.wav", ffmpeg_lib_path="C:/full/path/to/ffmpeg/bin/ffmpeg.exe")
+from timeit import default_timer as timer
+from kymatio.torch import Scattering1D
+import torch.nn.functional as F
+import random
+from sklearn.metrics import roc_auc_score
+import torch.nn as nn
+import torchaudio
+import matplotlib.pyplot as plt
+from torch.nn.functional import pad
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.preprocessing import LabelEncoder
+from torch.utils.data import Dataset
+import time 
+# from zipfile import ZipFile 
+# from torchaudio.transforms import MelSpectrogram
+
+
+# file = 'E:/Cetaceos de Canarias Base/_common-frecuent/'
+file = "/home/f/fratzeska/E/Cetacean_Classification/_common-frecuent"
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+class BasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+
+
+class ResNet(nn.Module):
+    def __init__(self, block, layers, in_channels=1, num_classes=10):
+        super(ResNet, self).__init__()
+        self.in_channels = 16
+        self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.relu = nn.ReLU(inplace=True)
+        self.layer1 = self.make_layer(block, 16, layers[0], stride=1)
+        self.layer2 = self.make_layer(block, 32, layers[1], stride=2)
+        self.layer3 = self.make_layer(block, 64, layers[2], stride=2)
+        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        # self.dropout = nn.Dropout(p=0.3) # <----- This is the new Dropout in the resnet (to remove you have to remove the one a few lines below too)
+        self.fc = nn.Linear(64, num_classes)
+
+    def make_layer(self, block, out_channels, blocks, stride=1):
+        downsample = None
+        if stride != 1 or self.in_channels != out_channels:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels),
+            )
+
+        layers = []
+        layers.append(block(self.in_channels, out_channels, stride, downsample))
+        self.in_channels = out_channels
+        for _ in range(1, blocks):
+            layers.append(block(out_channels, out_channels))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+
+        x = self.avg_pool(x)
+        x = x.view(x.size(0), -1)
+        # x = self.dropout(x) #<------ this is the new dropout in the resnet (to remove you have to remove the one a few lines above too)
+        x = self.fc(x)
+
+        return x
+
+class MLP(nn.Module):
+    def __init__(self, in_dim, num_classes):
+        super(MLP, self).__init__()
+        self.linear=nn.Linear(64,256)
+        self.activation=nn.ReLU()
+        self.linear2=nn.Linear(256,128)
+        self.activation=nn.ReLU()
+        self.linear3=nn.Linear(128,32)
+
+        # super(MLP, self).__init__() #This whole block is to add the new dropout in the MLP. If you want to remove remove all of it and uncomment the block above
+        # self.linear1 = nn.Linear(64, 256)
+        # self.linear2 = nn.Linear(256, 128)
+        # self.linear3 = nn.Linear(128, 32)
+        # self.activation = nn.ReLU()
+        # self.dropout = nn.Dropout(p=0.3)
+
+    def forward(self, x):
+        out=self.linear(x)
+        out=self.activation(out)
+        out=self.linear2(out)
+        out=self.activation(out)
+        out=self.linear3(out)
+        return out
+
+    # def forward(self, x): #this block is also to add the new dropout in the MLP . If you want to remove you have to remove all of it and uncomment the closk above
+    #     out = self.activation(self.linear1(x))
+    #     out = self.dropout(out)
+    #     out = self.activation(self.linear2(out))
+    #     out = self.dropout(out)
+    #     out = self.linear3(out)
+    #     return out
+
+# model_MLP = MLP().to(device)
+
+# --- Waveform augmentations ---
+def augment_waveform(x, p=0.2):
+    if random.random() < p:  # small Gaussian noise
+        x = x + 0.0005 * torch.randn_like(x)
+    if random.random() < p:  # small gain jitter
+        x = x * random.uniform(0.98, 1.02)
+    if random.random() < p:  # small circular time shift (±8% window)
+        shift = int(random.uniform(-0.005, 0.005) * x.shape[1])
+        x = torch.roll(x, shifts=shift, dims=1)
+    return x
+
+# --- Spectrogram augmentations ---
+def augment_spectrogram(spec, p=0.2):
+    if random.random() < p:
+        spec = torchaudio.transforms.FrequencyMasking(freq_mask_param=3)(spec)
+    if random.random() < p:
+        spec = torchaudio.transforms.TimeMasking(time_mask_param=8)(spec)
+    return spec
+
+if(torch.cuda.is_available()):
+    device = torch.device("cuda:0")
+else:
+    device = torch.device("cpu")
+# print(device)
+
+
+class MelSpecDataset(torch.utils.data.Dataset):
+    def __init__(self, X, y, sr=47600, augment=False):
+        self.X = X
+        self.y = y
+        self.augment = augment
+        self.sr = sr
+        self.mel = torchaudio.transforms.MelSpectrogram(
+            sample_rate=sr, n_mels=64, normalized=True
+        )
+
+        # SpecAugment ops
+        # self.freq_mask = torchaudio.transforms.FrequencyMasking(freq_mask_param=8)
+        # self.time_mask = torchaudio.transforms.TimeMasking(time_mask_param=20)
+
+    def __len__(self): return len(self.X)
+
+    def __getitem__(self, idx):
+        x = self.X[idx].unsqueeze(0)  # (1, T)
+        y = self.y[idx]
+
+        # light waveform augs ONLY for training
+        # if self.augment:
+            # x = augment_waveform(x)
+
+        m = self.mel(x)              # (n_mels, time)
+        
+        # if self.augment: # SpecAugment only on train
+            # m = augment_spectrogram(m) #<- this is what I changed here
+
+        return m, y
+
+def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Training Progress", fname="training_curves.png"):
+    epochs = range(1, len(loss_train) + 1)
+
+    plt.figure(figsize=(12, 5))
+
+    # Loss
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, loss_train, label="Train Loss")
+    plt.plot(epochs, loss_eval, label="Validation Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title("Loss over Epochs")
+    plt.legend()
+    plt.grid()
+
+    # Accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, acc_train, label="Train Accuracy")
+    plt.plot(epochs, acc_eval, label="Validation Accuracy")
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy (%)")
+    plt.title("Accuracy over Epochs")
+    plt.legend()
+    plt.grid()
+
+    # plt.suptitle(title)
+    # plt.show()
+    plt.tight_layout()
+    plt.savefig(fname, dpi=300)   # save as PNG file
+    plt.close()
+
+results_tot = {}
+test=[]
+for item in os.listdir(file):
+    # print(item)
+    test.append(item)
+classes_set = list(set(test))
+
+y_labs = [] #this will contain the class labels 
+data_full_list = [] #this will contain the audio data
+srate_full_list = [] #this will contain the sample rate of each audio
+
+target_sr = 47600   #Sets the target sampling rate for all audio
+
+for root, dirs, files in os.walk(file):
+    for fname in files:
+        if fname.lower().endswith(".wav"):
+            full_path = os.path.join(root, fname)
+            
+            # Class is the first folder name inside dataset
+            rel_path = os.path.relpath(full_path, file)
+            class_name = rel_path.split(os.sep)[0]
+
+            try:             
+                x, sr = sf.read(full_path, dtype='float32') 
+                if x.ndim == 1:
+                    x = torch.tensor(x, dtype=torch.float32).unsqueeze(0)
+                else:
+                    x = torch.tensor(x.T, dtype=torch.float32)
+
+                if sr != target_sr:
+                    n_samples = int(x.shape[1] * target_sr / sr)
+                    x_resampled = resample(x.numpy(), n_samples, axis=1)
+                    x = torch.tensor(x_resampled, dtype=torch.float32)
+
+                data_full_list.append(x)    # adds processed audio to the list
+                y_labs.append(class_name) # adds class label
+                srate_full_list.append(target_sr)  # ads resampled sample rate
+            
+            except Exception as e:
+                print(f"Skipping {full_path}: {e}", flush = True)
+
+signal_len = np.array([x.shape[1]/srate_full_list[k] for (k,x) in enumerate(data_full_list)]) 
+avg = np.mean(signal_len) # computes the mean of all the durations
+sd = np.std(signal_len) # computes the standard deviation of all the durations - Measures how spread out the audio lengths are from the average.
+idx = np.where(signal_len <= avg+100*sd)[0] # selects signals that are not extremely long outliers.
+selected_items = signal_len[idx] # Uses the indices idx to select the durations of the “allowed” signals.
+# selected_items is now an array of durations that passed the filter.
+
+def cutter(X,cut_point): #cuts and centers  Purpose: Prepare for cutting or padding audio signals to a fixed length cut_point.
+
+    cut_list = [] # it will store the processed tensors.
+    cut_point = int(cut_point) # ensures the length is an integer.
+    
+    for x in X:
+        n_len = x.shape[1] # number of samples in the signal 
+        add_pts = cut_point - n_len #number of samples needed to reach cut_point.
+
+        if n_len <= cut_point: #if the length is less than the cut point, 
+            pp_left = int(add_pts / 2) # we pad the signal equally left and right
+            pp_right = add_pts - pp_left 
+            # cut_list.append(pad(x, (pp_left, pp_right)))
+            cut_list.append(pad(x, (pp_left, pp_right))) #and then we transform it in a tensor and we add it to a list
+        else:
+            center_time = int(n_len / 2) #if the length is more than the cut point 
+            pp_left = int(cut_point-center_time)    #we cut the signal equally from the left and right
+            pp_right = cut_point - pp_left
+            cut_list.append(x[:, center_time - pp_left:center_time + pp_right]) #and we add it to the list
+    return torch.cat(cut_list)
+
+y_sel = np.array(y_labs)[idx] #we select the longer signals?
+data_sel = [data_full_list[j] for j in idx] #this is the array that contains the data with the longer signals
+
+lens = [x.shape[1] for x in data_sel] 
+cut_point= 8000 
+X_cut = cutter(data_sel, cut_point) #normalises lengths to 8000 samples 
+dict = {}
+
+for name in set(y_labs):
+    dict[name] = np.where(y_sel == name) #groups samples by class
+
+keep_idx = [] #keeps classes with more than 50 samples
+thrs = 50
+
+for k in dict.keys():
+    els = len(dict[k][0])
+    if els > thrs:
+        keep_idx.append(dict[k][0]) 
+
+keep = set() 
+
+for l in keep_idx:
+    keep = keep.union(set(l))
+kp = list(keep)
+XC = X_cut[kp, :]   #<- this is the balanced dataset
+#XP = X_pad[kp,:]   
+y = y_sel[kp]       #<- this is the corresponding labels
+
+
+def standardize(X): #normalises each signal to zero mean and unit variance
+    st = torch.std(X, dim=1, keepdim=True)
+    mn = torch.mean(X, dim=1, keepdim=True)
+    return (X - mn) / st
+
+
+X = standardize(XC) #standardization
+X = XC
+X = X.squeeze(1)
+
+df_X = pd.DataFrame(X, columns=[f'col_{i}' for i in range(X.shape[1])]) #converts to dataframe 
+
+# Add a column for y
+df_X['y'] = y
+df_X_no_duplicates = df_X.drop_duplicates(subset=df_X.iloc[:, 0:cut_point]) #removes duplicate recordings
+X = torch.from_numpy(df_X_no_duplicates.iloc[:, 0:8000].values)
+y = df_X_no_duplicates.iloc[:, -1].values
+
+classes = np.unique(y)
+num_classes = len(classes)
+print(f"Detected {num_classes} classes", flush = True)
+
+batches = [64, 128, 256]
+
+#~~~~~~~~~~~~ FEATURE EXTRACTION ~~~~~~~~~~~~~~~
+
+batch_size = 500
+N_batch =  int(X.shape[0]/batch_size)+1
+
+batches = [64, 128, 256]
+JQ = [(7, 10), (6, 16), (8,14)]
+
+J, Q = JQ[2]
+T = X.shape[1]
+
+scattering=Scattering1D(J,T,Q)  #builds a scattering operator with scale J and quality Q
+scattering = scattering.to(device)
+
+wst = [] 
+for n in range(N_batch):
+    x = X[n*batch_size:(n+1)*batch_size].to(device)
+    # x = x.unsqueeze(1).to(torch.float32).to(device)
+    SX_tmp = scattering(x)
+    wst.append(SX_tmp)
+SX = torch.concat(wst) #this is the wavelet scattering coefficients dataset
+
+meta = scattering.meta() #returns a dictionary describing the scattering coefficients.
+
+# order0 = torch.from_numpy(np.where(meta['order'] == 0)[0])
+# order1 = torch.from_numpy(np.where(meta['order'] == 1)[0])
+# order2 = torch.from_numpy(np.where(meta['order'] == 2)[0])
+order0 = np.where(meta['order'] == 0)
+order1 = np.where(meta['order'] == 1)
+order2 = np.where(meta['order'] == 2)
+
+
+def median_norm(X):
+    md = torch.median(X)
+    sn = torch.std(X)
+    return (X - md) / sn
+    
+SX_med = SX
+# SX_med = SX_med.unsqueeze(1)
+
+# print(SX_med.shape)
+for i in range(SX.shape[0]): 
+
+    SX_med[i][order0] = median_norm(SX[i][order0])
+    SX_med[i][order1] = median_norm(SX[i][order1])
+    SX_med[i][order2] = median_norm(SX[i][order2])
+
+
+batch_size = 256
+
+lbe = LabelEncoder() #Encodes class labels y to integer labels with LabelEncoder.
+y_trc = torch.as_tensor(lbe.fit_transform(y))
+index_shuffle=np.arange(len(y_trc))
+idx_train, idx_test, y_trXX, y_testXX = train_test_split(index_shuffle, y_trc, test_size=.25, stratify=y) #Creates an index array and splits indices into train/test with stratification (so proportions per class are kept).
+
+batch_size = batches[0]
+
+train_dataset_mel = MelSpecDataset(X[idx_train], y_trXX, sr=target_sr, augment=True)
+val_dataset_mel   = MelSpecDataset(X[idx_test],  y_testXX, sr=target_sr, augment=False)
+
+train_dataloader_mel = DataLoader(train_dataset_mel, batch_size=batch_size, shuffle=True)
+val_dataloader_mel   = DataLoader(val_dataset_mel,   batch_size=batch_size, shuffle=False)
+
+#Builds TensorDatasets for scattering order1 and order2. SX_med[idx_train][:,order1] selects the training samples and the channels corresponding to order1. .cpu() moves the tensors to CPU before storing in dataset.
+train_dataset_1 = TensorDataset(SX_med[idx_train][:,order1].cpu(), y_trXX)
+val_dataset_1 = TensorDataset(SX_med[idx_test][:,order1].cpu(), y_testXX)
+train_dataloader_1 = DataLoader(train_dataset_1, batch_size=batch_size, shuffle=True)
+val_dataloader_1 = DataLoader(val_dataset_1, batch_size=batch_size, shuffle=False)
+train_dataset_2 = TensorDataset(SX_med[idx_train][:,order2].cpu(), y_trXX)
+val_dataset_2 = TensorDataset(SX_med[idx_test][:,order2].cpu(), y_testXX)
+train_dataloader_2 = DataLoader(train_dataset_2, batch_size=batch_size, shuffle=True)
+val_dataloader_2 = DataLoader(val_dataset_2, batch_size=batch_size, shuffle=False)
+
+num_classes =32
+# Instantiate the model
+model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+learning_rate_mel = .01 # <----- this is the original LR
+# learning_rate_mel = .001
+# learning_rate_mel = 3e-4 # <---- we lower the lr here
+optimizer_mel = torch.optim.AdamW(model_mel.parameters(), lr=learning_rate_mel,amsgrad= True, weight_decay= .001 )
+scheduler_mel = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_mel, 'min')
+learning_rate_1 = .01 # <----- this is the original LR
+# learning_rate_1 = 3e-4 # <---- we lower the lr here
+# learning_rate_1 = 0.001
+optimizer_1 = torch.optim.AdamW(model_wst_1.parameters(), lr=learning_rate_1,amsgrad= True, weight_decay= .001 )
+scheduler_1 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_1, 'min')
+learning_rate_2 = .01 # <----- this is the original LR
+# learning_rate_2 = 0.001
+# learning_rate_2 = 3e-4 # <---- we lower the lr here
+
+optimizer_2 = torch.optim.AdamW(model_wst_2.parameters(), lr=learning_rate_2,amsgrad= True, weight_decay= .001 )
+scheduler_2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_2, 'min')
+
+def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimizer,scheduler, fname):
+    criterion = nn.CrossEntropyLoss()
+    
+    n_total_steps = len(train_dataloader)
+    num_epochs = 100
+    # num_epochs = 1
+    loss_train = []
+    acc_train = []
+    acc_eval = []
+    loss_eval = []
+    for epoch in range(num_epochs):
+        print("starting new epoch ", flush = True)
+        print(epoch, flush = True)
+        loss_ep_train = 0
+        n_samples = 0
+        n_correct = 0
+        for i, (x, labels) in enumerate(train_dataloader):
+    
+            x = x.to(device)
+            labels = labels.to(device, dtype=torch.long)
+            #forward pass
+            outputs = model(x)
+            loss = criterion(outputs, labels)
+    
+            #backward pass
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+    
+            loss_ep_train += loss.item()
+            _, predictions = torch.max(outputs, 1)
+    
+            n_samples += labels.shape[0]
+            n_correct += (predictions == labels).sum().item()
+            
+            if (i + 1) % 100 == 0:
+                print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
+    
+        acc_tr = 100 * n_correct / n_samples
+        acc_train.append(acc_tr)
+        loss_train.append(loss_ep_train/len(train_dataloader))
+    
+        loss_ep_eval = 0
+    
+        with torch.no_grad():
+    
+            n_correct = 0
+            n_samples = 0
+    
+            for x, labels in val_dataloader:
+                x = x.to(device)
+    
+                labels = labels.to(device)
+                outputs = model(x)
+                lossvv = criterion(outputs, labels)
+    
+                _, predictions = torch.max(outputs, 1)
+    
+                n_samples += labels.shape[0]
+                n_correct += (predictions == labels).sum().item()
+                loss_ep_eval += lossvv.item()
+    
+            acc = 100 * n_correct / n_samples
+    
+        acc_eval.append(acc)
+        loss_eval.append(loss_ep_eval/len(val_dataloader))
+    
+        print(f' validation accuracy = {acc}', flush = True)
+        # scheduler.step(loss_eval[-1])
+    
+    res = np.array([loss_train, loss_eval, acc_train, acc_eval])
+    
+    
+    namefile = f'{fname}_{J,Q}_{batch_size}'
+    np.save(namefile, res)
+
+    yp = []
+    ytr = []
+    y_prob = []
+    times=[]
+    with torch.no_grad():
+        n_correct = 0
+        n_samples = 0
+    
+        for x, labels in val_dataloader:
+            x = x.to(device)
+    
+            labels = labels.to(device)
+            tick=time.time()
+            outputs = model(x)
+            tick=time.time()-tick
+            times.append(tick/len(labels))
+            pr_out = torch.softmax(outputs, dim = 1)
+    
+            proba, predictions = torch.max(pr_out, 1)
+    
+            yp.append(predictions.cpu().numpy())
+            ytr.append(labels.cpu().numpy())
+            y_prob.append(pr_out.cpu().numpy())
+            n_samples += labels.shape[0]
+            n_correct += (predictions == labels).sum().item()
+    
+        
+        acc = 100 * n_correct / n_samples
+
+num_ensembles = 10
+ensemble_dir = "./ensemble_outputs"
+os.makedirs(ensemble_dir, exist_ok=True)
+
+for seed in range(num_ensembles):
+    print(f"\n==================== Ensemble run {seed+1}/{num_ensembles} ====================")
+    set_seed(seed)
+
+    # --- Reinitialize models for this run ---
+    num_classes =32
+    model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+    model_wst_1 = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+    model_wst_2 = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+
+    learning_rate_mel = .01
+    learning_rate_1 = .01
+    learning_rate_2 = .01
+    
+    optimizer_mel = torch.optim.AdamW(model_mel.parameters(), lr=learning_rate_mel, amsgrad=True, weight_decay=0.001)
+    optimizer_1 = torch.optim.AdamW(model_wst_1.parameters(), lr=learning_rate_1, amsgrad=True, weight_decay=0.001)
+    optimizer_2 = torch.optim.AdamW(model_wst_2.parameters(), lr=learning_rate_2, amsgrad=True, weight_decay=0.001)
+
+    scheduler_mel = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_mel, 'min')
+    scheduler_1 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_1, 'min')
+    scheduler_2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_2, 'min')
+
+    # --- Train the three ResNets ---
+    training_resnet(model_mel, train_dataloader_mel, val_dataloader_mel,
+                    learning_rate_mel, optimizer_mel, scheduler_mel, f"modelmel_seed{seed}")
+    training_resnet(model_wst_1, train_dataloader_1, val_dataloader_1,
+                    learning_rate_1, optimizer_1, scheduler_1, f"modelws1_seed{seed}")
+    training_resnet(model_wst_2, train_dataloader_2, val_dataloader_2,
+                    learning_rate_2, optimizer_2, scheduler_2, f"modelws2_seed{seed}")
+
+    # --- Fuse predictions and build the final MLP dataset (same as you already do) ---
+    train_dataloader_1_fin = DataLoader(train_dataset_1, batch_size=batch_size, shuffle=False)
+    val_dataloader_1_fin = DataLoader(val_dataset_1, batch_size=batch_size, shuffle=False)
+    train_dataloader_2_fin = DataLoader(train_dataset_2, batch_size=batch_size, shuffle=False)
+    val_dataloader_2_fin = DataLoader(val_dataset_2, batch_size=batch_size, shuffle=False)
+
+    list_prob_1, list_prob_2, list_prob_1_val, list_prob_2_val = [], [], [], []
+
+    with torch.no_grad():
+        for x, labels in train_dataloader_1_fin:
+            x = x.to(device)
+            list_prob_1.append(model_wst_1(x).cpu())
+        for x, labels in val_dataloader_1_fin:
+            x = x.to(device)
+            list_prob_1_val.append(model_wst_1(x).cpu())
+        for x, labels in train_dataloader_2_fin:
+            x = x.to(device)
+            list_prob_2.append(model_wst_2(x).cpu())
+        for x, labels in val_dataloader_2_fin:
+            x = x.to(device)
+            list_prob_2_val.append(model_wst_2(x).cpu())
+
+    prob_train_1 = torch.concat(list_prob_1)
+    prob_train_2 = torch.concat(list_prob_2)
+    prob_val_1 = torch.concat(list_prob_1_val)
+    prob_val_2 = torch.concat(list_prob_2_val)
+
+    train = torch.hstack((prob_train_1, prob_train_2))
+    val = torch.hstack((prob_val_1, prob_val_2))
+
+    train_final = TensorDataset(train, y_trXX)
+    val_final = TensorDataset(val, y_testXX)
+    train_final_load = DataLoader(train_final, batch_size=batch_size, shuffle=True)
+    val_final_load = DataLoader(val_final, batch_size=batch_size, shuffle=False)
+
+    # --- Train the fusion MLP ---
+    num_classes =32
+    model_MLP = MLP(in_dim=64, num_classes=num_classes).to(device)
+    learning_rate = .001
+    optimizer = torch.optim.Adam(model_MLP.parameters(), lr=learning_rate)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+    criterion = nn.CrossEntropyLoss()
+    
+
+    # num_epochs = 200
+    num_epochs = 500
+    for epoch in range(num_epochs):
+        model_MLP.train()
+        for x, labels in train_final_load:
+            x, labels = x.to(device), labels.to(device)
+            outputs = model_MLP(x)
+            loss = criterion(outputs, labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    # --- Save validation logits for ensemble fusion ---
+    all_val_logits = []
+    all_val_labels = []
+    with torch.no_grad():
+        for x, labels in val_final_load:
+            x = x.to(device)
+            outputs = model_MLP(x)
+            all_val_logits.append(outputs.cpu())
+            all_val_labels.append(labels.cpu())
+
+    all_val_logits = torch.cat(all_val_logits)
+    all_val_labels = torch.cat(all_val_labels)
+    torch.save({"logits": all_val_logits, "labels": all_val_labels},
+               f"{ensemble_dir}/val_logits_seed{seed}.pt")
+
+    #new
+    with torch.no_grad():
+    # ResNet outputs on their native inputs
+    rs1_logits, rs2_logits, mel_logits = [], [], []
+    rs1_preds,  rs2_preds,  mel_preds  = [], [], []
+
+    for x, y in val_dataloader_1_fin:
+        x = x.to(device)
+        o = model_wst_1(x)
+        rs1_logits.append(o.cpu()); rs1_preds.append(o.argmax(1).cpu())
+    for x, y in val_dataloader_2_fin:
+        x = x.to(device)
+        o = model_wst_2(x)
+        rs2_logits.append(o.cpu()); rs2_preds.append(o.argmax(1).cpu())
+    for x, y in val_dataloader_mel:
+        x = x.to(device)
+        o = model_mel(x)
+        mel_logits.append(o.cpu()); mel_preds.append(o.argmax(1).cpu())
+
+    rs1_logits = torch.cat(rs1_logits); rs1_preds = torch.cat(rs1_preds)
+    rs2_logits = torch.cat(rs2_logits); rs2_preds = torch.cat(rs2_preds)
+    mel_logits = torch.cat(mel_logits); mel_preds = torch.cat(mel_preds)
+
+    fusion_logits, fusion_preds = [], []
+    for x, y in val_final_load:
+        x = x.to(device)
+        o = model_MLP(x)
+        fusion_logits.append(o.cpu()); fusion_preds.append(o.argmax(1).cpu())
+    fusion_logits = torch.cat(fusion_logits); fusion_preds = torch.cat(fusion_preds)
+
+    # all_val_labels from your code aligns with val_final_load labels.
+    # Save everything for this seed:
+    torch.save({
+        "labels":            all_val_labels,        # GT labels
+        "rs1_logits":        rs1_logits,
+        "rs1_preds":         rs1_preds,
+        "rs2_logits":        rs2_logits,
+        "rs2_preds":         rs2_preds,
+        "mel_logits":        mel_logits,
+        "mel_preds":         mel_preds,
+        "fusion_logits":     fusion_logits,
+        "fusion_preds":      fusion_preds
+    }, f"{ensemble_dir}/per_head_seed{seed}.pt")
+
+print("✅ All ensemble runs completed. Run ensemble_fusion.py to compute average accuracy.")
+
+ensemble_dir = "./ensemble_outputs"
+all_logits = []
+labels_ref = None
+
+for fname in os.listdir(ensemble_dir):
+    if fname.startswith("val_logits_seed") and fname.endswith(".pt"):
+        data = torch.load(os.path.join(ensemble_dir, fname))
+        all_logits.append(data["logits"])
+        if labels_ref is None:
+            labels_ref = data["labels"]
+
+# for fname in os.listdir(ensemble_dir):
+#     if fname.endswith(".pt"):
+#         data = torch.load(os.path.join(ensemble_dir, fname))
+#         all_logits.append(data["logits"])
+#         if labels_ref is None:
+#             labels_ref = data["labels"]
+
+if len(all_logits) == 0:
+    print("⚠️ No .pt files found in ensemble_outputs — did the ensemble loop finish correctly?")
+else:
+    # Stack and average logits across runs
+    logits_stack = torch.stack(all_logits)  # shape: [num_runs, num_samples, num_classes]
+    avg_logits = logits_stack.mean(dim=0)
+
+    # Compute ensemble accuracy
+    _, predictions = torch.max(avg_logits, dim=1)
+    accuracy = (predictions == labels_ref).float().mean().item() * 100
+    print(f"✅ Ensemble accuracy across {len(all_logits)} runs: {accuracy:.2f}%")
