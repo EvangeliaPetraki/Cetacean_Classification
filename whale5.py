@@ -671,46 +671,46 @@ for seed in range(num_ensembles):
     #new
     with torch.no_grad():
     # ResNet outputs on their native inputs
-    rs1_logits, rs2_logits, mel_logits = [], [], []
-    rs1_preds,  rs2_preds,  mel_preds  = [], [], []
-
-    for x, y in val_dataloader_1_fin:
-        x = x.to(device)
-        o = model_wst_1(x)
-        rs1_logits.append(o.cpu()); rs1_preds.append(o.argmax(1).cpu())
-    for x, y in val_dataloader_2_fin:
-        x = x.to(device)
-        o = model_wst_2(x)
-        rs2_logits.append(o.cpu()); rs2_preds.append(o.argmax(1).cpu())
-    for x, y in val_dataloader_mel:
-        x = x.to(device)
-        o = model_mel(x)
-        mel_logits.append(o.cpu()); mel_preds.append(o.argmax(1).cpu())
-
-    rs1_logits = torch.cat(rs1_logits); rs1_preds = torch.cat(rs1_preds)
-    rs2_logits = torch.cat(rs2_logits); rs2_preds = torch.cat(rs2_preds)
-    mel_logits = torch.cat(mel_logits); mel_preds = torch.cat(mel_preds)
-
-    fusion_logits, fusion_preds = [], []
-    for x, y in val_final_load:
-        x = x.to(device)
-        o = model_MLP(x)
-        fusion_logits.append(o.cpu()); fusion_preds.append(o.argmax(1).cpu())
-    fusion_logits = torch.cat(fusion_logits); fusion_preds = torch.cat(fusion_preds)
-
-    # all_val_labels from your code aligns with val_final_load labels.
-    # Save everything for this seed:
-    torch.save({
-        "labels":            all_val_labels,        # GT labels
-        "rs1_logits":        rs1_logits,
-        "rs1_preds":         rs1_preds,
-        "rs2_logits":        rs2_logits,
-        "rs2_preds":         rs2_preds,
-        "mel_logits":        mel_logits,
-        "mel_preds":         mel_preds,
-        "fusion_logits":     fusion_logits,
-        "fusion_preds":      fusion_preds
-    }, f"{ensemble_dir}/per_head_seed{seed}.pt")
+        rs1_logits, rs2_logits, mel_logits = [], [], []
+        rs1_preds,  rs2_preds,  mel_preds  = [], [], []
+    
+        for x, y in val_dataloader_1_fin:
+            x = x.to(device)
+            o = model_wst_1(x)
+            rs1_logits.append(o.cpu()); rs1_preds.append(o.argmax(1).cpu())
+        for x, y in val_dataloader_2_fin:
+            x = x.to(device)
+            o = model_wst_2(x)
+            rs2_logits.append(o.cpu()); rs2_preds.append(o.argmax(1).cpu())
+        for x, y in val_dataloader_mel:
+            x = x.to(device)
+            o = model_mel(x)
+            mel_logits.append(o.cpu()); mel_preds.append(o.argmax(1).cpu())
+    
+        rs1_logits = torch.cat(rs1_logits); rs1_preds = torch.cat(rs1_preds)
+        rs2_logits = torch.cat(rs2_logits); rs2_preds = torch.cat(rs2_preds)
+        mel_logits = torch.cat(mel_logits); mel_preds = torch.cat(mel_preds)
+    
+        fusion_logits, fusion_preds = [], []
+        for x, y in val_final_load:
+            x = x.to(device)
+            o = model_MLP(x)
+            fusion_logits.append(o.cpu()); fusion_preds.append(o.argmax(1).cpu())
+        fusion_logits = torch.cat(fusion_logits); fusion_preds = torch.cat(fusion_preds)
+    
+        # all_val_labels from your code aligns with val_final_load labels.
+        # Save everything for this seed:
+        torch.save({
+            "labels":            all_val_labels,        # GT labels
+            "rs1_logits":        rs1_logits,
+            "rs1_preds":         rs1_preds,
+            "rs2_logits":        rs2_logits,
+            "rs2_preds":         rs2_preds,
+            "mel_logits":        mel_logits,
+            "mel_preds":         mel_preds,
+            "fusion_logits":     fusion_logits,
+            "fusion_preds":      fusion_preds
+        }, f"{ensemble_dir}/per_head_seed{seed}.pt")
 
 print("✅ All ensemble runs completed. Run ensemble_fusion.py to compute average accuracy.")
 
