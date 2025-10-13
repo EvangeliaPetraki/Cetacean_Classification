@@ -1,4 +1,4 @@
-print('~~~~~~~~ Ensemble try 3 ~~~~~~~~', flush = True)  
+print('~~~~~~~~ Ensemble try 3 . Classes are correct ~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
@@ -122,7 +122,7 @@ class ResNet(nn.Module):
 class MLP(nn.Module):
     def __init__(self, in_dim, num_classes):
         super(MLP, self).__init__()
-        self.linear=nn.Linear(64,256)
+        self.linear=nn.Linear(in_dim,256)
         self.activation=nn.ReLU()
         self.linear2=nn.Linear(256,128)
         self.activation=nn.ReLU()
@@ -436,7 +436,7 @@ val_dataset_2 = TensorDataset(SX_med[idx_test][:,order2].cpu(), y_testXX)
 train_dataloader_2 = DataLoader(train_dataset_2, batch_size=batch_size, shuffle=True)
 val_dataloader_2 = DataLoader(val_dataset_2, batch_size=batch_size, shuffle=False)
 
-num_classes =32
+# num_classes =32
 # Instantiate the model
 model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
 model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
@@ -572,7 +572,7 @@ for seed in range(num_ensembles):
     set_seed(seed)
 
     # --- Reinitialize models for this run ---
-    num_classes =32
+    # num_classes =32
     model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
     model_wst_1 = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
     model_wst_2 = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
@@ -633,8 +633,8 @@ for seed in range(num_ensembles):
     val_final_load = DataLoader(val_final, batch_size=batch_size, shuffle=False)
 
     # --- Train the fusion MLP ---
-    num_classes =32
-    model_MLP = MLP(in_dim=64, num_classes=num_classes).to(device)
+    # num_classes =32
+    model_MLP = MLP(in_dim=2*num_classes, num_classes=num_classes).to(device)
     learning_rate = .001
     optimizer = torch.optim.Adam(model_MLP.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
