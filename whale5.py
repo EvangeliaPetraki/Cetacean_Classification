@@ -563,7 +563,7 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
         
         acc = 100 * n_correct / n_samples
 
-num_ensembles = 10
+num_ensembles = 20
 ensemble_dir = "./ensemble_outputs"
 os.makedirs(ensemble_dir, exist_ok=True)
 
