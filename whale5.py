@@ -1,4 +1,4 @@
-print('~~~~~~~~ Ensemble try 3 . Classes are correct ~~~~~~~~', flush = True)  
+print('~~~~~~~~ Ensemble try 3 . Classes are correct (in the previous - 2079421 they werent) ~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
@@ -126,7 +126,7 @@ class MLP(nn.Module):
         self.activation=nn.ReLU()
         self.linear2=nn.Linear(256,128)
         self.activation=nn.ReLU()
-        self.linear3=nn.Linear(128,32)
+        self.linear3=nn.Linear(128,num_classes)
 
         # super(MLP, self).__init__() #This whole block is to add the new dropout in the MLP. If you want to remove remove all of it and uncomment the block above
         # self.linear1 = nn.Linear(64, 256)
