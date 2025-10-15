@@ -615,7 +615,9 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     
             loss_ep_train += loss.item()
             _, predictions = torch.max(outputs, 1)
-    
+
+
+            
             n_samples += labels.shape[0]
             n_correct += (predictions == labels).sum().item()
     
@@ -646,9 +648,11 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
 
                 outputs_merged = outputs.view(outputs.size(0), num_real_classes, num_repeats).mean(dim=2) #<------- here the 32 pseudoclasses are merged back to 8 
                 _, predictions = torch.max(outputs_merged, 1)
-    
+
+                labels_reduced = labels % num_real_classes  
+                
                 n_samples += labels.shape[0]
-                n_correct += (predictions == labels).sum().item()
+                n_correct += (predictions == labels_reduced).sum().item()
                 loss_ep_eval += lossvv.item()
     
             acc = 100 * n_correct / n_samples
@@ -831,11 +835,12 @@ for epoch in range(num_epochs):
         n_samples += labels.shape[0]
         n_correct += (predictions == labels).sum().item()
 
+        print(f"Epoch [{epoch+1}/{num_epochs}]  |  Train Acc: {acc_tr:.2f}%  |  Val Acc: {acc:.2f}%  |  Train Loss: {loss_train[-1]:.4f}  |  Val Loss: {loss_eval[-1]:.4f}", flush=True)
 
 
-        if (i + 1) % 100 == 0:
-            print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
-
+        # if (i + 1) % 100 == 0:
+            # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
+    
     acc_tr = 100 * n_correct / n_samples
     acc_train.append(acc_tr)
     loss_train.append(loss_ep_train/len(train_final_load))
@@ -933,6 +938,7 @@ _, predictions = torch.max(outputs, 1)
 # n_correct = (predictions == y_testXX.cuda() ).sum().item()
 
 n_correct = (predictions == y_testXX.to(device)).sum().item()
+
 
 accuracy=n_correct/predictions.shape[0]
 final_res = {}
