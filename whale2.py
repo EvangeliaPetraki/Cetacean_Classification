@@ -1,6 +1,6 @@
 # This file is with the augmentations. 
 
-print('~~~~~~~~  32 Classes, no augmentations ~~~~~~~~', flush = True)  
+print('~~~~~~~~  First time implementing multiplying the dataset x4 -> 32 Classes, no augmentations ~~~~~~~~', flush = True)  
 
 import math
 import numpy as np
