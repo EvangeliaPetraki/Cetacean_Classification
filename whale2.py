@@ -21,6 +21,7 @@ from timeit import default_timer as timer
 from kymatio.torch import Scattering1D
 import torch.nn.functional as F
 import random
+from sklearn.preprocessing import LabelEncoder
 
 from torch.utils.data import Dataset
 
@@ -86,8 +87,8 @@ class MelSpecDataset(torch.utils.data.Dataset):
         )
 
         # SpecAugment ops
-        self.freq_mask = torchaudio.transforms.FrequencyMasking(freq_mask_param=8)
-        self.time_mask = torchaudio.transforms.TimeMasking(time_mask_param=20)
+        # self.freq_mask = torchaudio.transforms.FrequencyMasking(freq_mask_param=8)
+        # self.time_mask = torchaudio.transforms.TimeMasking(time_mask_param=20)
 
     def __len__(self): return len(self.X)
 
@@ -340,10 +341,26 @@ X = torch.from_numpy(df_X_no_duplicates.iloc[:, 0:8000].values)
 y = df_X_no_duplicates.iloc[:, -1].values
 
 classes = np.unique(y)
-num_classes = len(classes)
-print(f"Detected {num_classes} classes", flush = True)
+num_real_classes = len(classes)
+print(f"Detected {num_real_classes} classes", flush = True)
+
+y_encoded = torch.as_tensor(LabelEncoder().fit_transform(y))  # convert to numbers 0–7
+
+num_repeats = 4
+num_classes_used = num_real_classes * num_repeats
 
 batches = [64, 128, 256]
+
+# Repeat the dataset 4 times and shift the labels accordingly
+X_repeated = X.repeat(num_repeats, 1)  # duplicates the samples
+y_repeated = torch.cat([y_encoded + i * num_real_classes for i in range(num_repeats)])  # 0–31
+
+print(f"Dataset expanded from {len(X)} → {len(X_repeated)} samples")
+print(f"Using {num_classes_used} pseudo-classes ({num_real_classes}×{num_repeats})")
+
+# Replace X and y for the rest of the script
+X = X_repeated
+y = y_repeated
 
 #~~~~~~~~~~~~ FEATURE EXTRACTION ~~~~~~~~~~~~~~~
 
@@ -426,7 +443,6 @@ from torch.utils.data import DataLoader, TensorDataset
 
 batch_size = 256
 
-from sklearn.preprocessing import LabelEncoder
 
 lbe = LabelEncoder() #Encodes class labels y to integer labels with LabelEncoder.
 y_trc = torch.as_tensor(lbe.fit_transform(y))
@@ -546,10 +562,9 @@ class ResNet(nn.Module):
         return x
 
 # Instantiate the model
-num_classes =32
-model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
-model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
-model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes).to(device)
+model_mel = ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes_used).to(device)
+model_wst_1=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes_used).to(device)
+model_wst_2=ResNet(BasicBlock, [2, 2, 2], in_channels=1, num_classes=num_classes_used).to(device)
 learning_rate_mel = .01 # <----- this is the original LR
 # learning_rate_mel = .001
 # learning_rate_mel = 3e-4 # <---- we lower the lr here
@@ -567,7 +582,7 @@ learning_rate_2 = .01 # <----- this is the original LR
 optimizer_2 = torch.optim.AdamW(model_wst_2.parameters(), lr=learning_rate_2,amsgrad= True, weight_decay= .001 )
 scheduler_2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer_2, 'min')
 
-def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimizer,scheduler, fname):
+def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimizer,scheduler, fname, num_real_classes, num_repeats):
     criterion = nn.CrossEntropyLoss()
     
     n_total_steps = len(train_dataloader)
@@ -628,6 +643,9 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
                 lossvv = criterion(outputs, labels)
     
                 _, predictions = torch.max(outputs, 1)
+
+                outputs_merged = outputs.view(outputs.size(0), num_real_classes, num_repeats).mean(dim=2) #<------- here the 32 pseudoclasses are merged back to 8 
+                _, predictions = torch.max(outputs_merged, 1)
     
                 n_samples += labels.shape[0]
                 n_correct += (predictions == labels).sum().item()
@@ -679,9 +697,9 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
         acc = 100 * n_correct / n_samples
 
 
-training_resnet(model_mel,train_dataloader_mel,val_dataloader_mel,learning_rate_mel,optimizer_mel,scheduler_mel, 'modelmel')
-training_resnet(model_wst_1,train_dataloader_1,val_dataloader_1,learning_rate_1,optimizer_1,scheduler_1,'modelws1')
-training_resnet(model_wst_2,train_dataloader_2,val_dataloader_2,learning_rate_2,optimizer_2,scheduler_2, 'modelws2')
+training_resnet(model_mel,train_dataloader_mel,val_dataloader_mel,learning_rate_mel,optimizer_mel,scheduler_mel, 'modelmel', num_real_classes, num_repeats)
+training_resnet(model_wst_1,train_dataloader_1,val_dataloader_1,learning_rate_1,optimizer_1,scheduler_1,'modelws1', num_real_classes, num_repeats)
+training_resnet(model_wst_2,train_dataloader_2,val_dataloader_2,learning_rate_2,optimizer_2,scheduler_2, 'modelws2', num_real_classes, num_repeats)
 
 train_dataloader_1_fin = DataLoader(train_dataset_1, batch_size=batch_size, shuffle=False)
 val_dataloader_1_fin = DataLoader(val_dataset_1, batch_size=batch_size, shuffle=False)
@@ -769,10 +787,10 @@ class MLP(nn.Module):
     #     return out
 
 # model_MLP = MLP().to(device)
-in_dim = 2 * num_classes
-in_dim = 64
-num_classes = 32
-model_MLP = MLP(in_dim, num_classes).to(device)
+in_dim = 2 * num_classes_used
+# in_dim = 64
+# num_classes = 32
+model_MLP = MLP(in_dim, num_classes_used).to(device)
 
 
 criterion = nn.CrossEntropyLoss()
@@ -964,10 +982,10 @@ train_hard_load = DataLoader(train_boh, batch_size=batch_size, shuffle=True)
 val_hard_load = DataLoader(val_boh, batch_size=batch_size, shuffle=False)
 
 # model_MLP = MLP().to(device)
-in_dim = 2 * num_classes
-in_dim = 64
-num_classes = 32
-model_MLP = MLP(in_dim, num_classes).to(device)
+in_dim = 2 * num_classes_used
+# in_dim = 64
+# num_classes = 32
+model_MLP = MLP(in_dim, num_classes_used).to(device)
 
 
 criterion = nn.CrossEntropyLoss()
