@@ -586,8 +586,8 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     criterion = nn.CrossEntropyLoss()
     
     n_total_steps = len(train_dataloader)
-    num_epochs = 100
-    # num_epochs = 1
+    # num_epochs = 100
+    num_epochs = 1
     loss_train = []
     acc_train = []
     acc_eval = []
@@ -615,7 +615,8 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     
             loss_ep_train += loss.item()
             _, predictions = torch.max(outputs, 1)
-
+            print(predictions)
+            print(labels)
 
             
             n_samples += labels.shape[0]
@@ -802,8 +803,8 @@ learning_rate = .001
 optimizer = torch.optim.Adam(model_MLP.parameters(), lr=learning_rate )
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 n_total_steps = len(train_final_load)
-num_epochs = 500
-# num_epochs = 1
+# num_epochs = 500
+num_epochs = 1
 
 loss_train = []
 acc_train = []
@@ -1001,8 +1002,8 @@ learning_rate = .001
 optimizer = torch.optim.Adam(model_MLP.parameters(), lr=learning_rate )
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 n_total_steps = len(train_hard_load)
-num_epochs = 500
-# num_epochs = 1
+# num_epochs = 500
+num_epochs = 1
 
 loss_train = []
 acc_train = []
