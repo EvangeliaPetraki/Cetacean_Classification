@@ -837,7 +837,7 @@ for epoch in range(num_epochs):
 
         acc_tr = 100 * n_correct / n_samples
 
-        print(f"Epoch [{epoch+1}/{num_epochs}]  |  Train Acc: {acc_tr:.2f}%  |  Train Loss: {loss_ep_train[-1]:.4f} ", flush=True)
+        print(f"Epoch [{epoch+1}/{num_epochs}]  |  Train Acc: {acc_tr:.2f}%  |  Train Loss: {loss_ep_train:.4f} ", flush=True)
 
 
         # if (i + 1) % 100 == 0:
