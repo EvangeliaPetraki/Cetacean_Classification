@@ -717,7 +717,7 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     
             proba, predictions = torch.max(pr_out, 1)
 
-            predictions_fin_refuced = predictions % num_real_classes
+            predictions_fin_reduced = predictions % num_real_classes
             labels_fin_reduced = labels % num_real_classes
             
             yp.append(predictions.cpu().numpy())
