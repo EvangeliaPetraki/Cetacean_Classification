@@ -623,10 +623,10 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
             predictions_reduced_tr = predictions % num_real_classes
             labels_reduced_tr = labels % num_real_classes
             
-            print('these are the predictions before reducing', predictions)
-            print('these are the predictions after reducing', predictions_reduced_tr)
-            print('these are the labels before reducing',labels)
-            print('these are the labels after reducing', labels_reduced_tr)
+            # print('these are the predictions before reducing', predictions)
+            # print('these are the predictions after reducing', predictions_reduced_tr)
+            # print('these are the labels before reducing',labels)
+            # print('these are the labels after reducing', labels_reduced_tr)
 
             n_samples += labels.shape[0]
             n_correct_32_tr += (predictions == labels).sum().item()
