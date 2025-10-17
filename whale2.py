@@ -633,8 +633,8 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
             n_correct_8_tr += (predictions_reduced_tr == labels_reduced_tr).sum().item()
 
     
-            if (i + 1) % 100 == 0:
-                print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
+            # if (i + 1) % 100 == 0:
+                # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
             #     print(f'training accuracy for epoch: {epoch +1} for 32 classes was {accuracy_tr_32:.2f}, ', flush = True)
             #     print(f'training accuracy for epoch: {epoch +1} for 8 classes was {accuracy_tr_8:.2f}, ', flush = True)
 
@@ -1125,7 +1125,7 @@ for epoch in range(num_epochs):
 
             n_samples += labels.shape[0]
             n_correct_32 += (predictions == labels).sum().item()
-            n_correct_8 += (predictions_reduced == labels_reduced)
+            n_correct_8 += (predictions_reduced == labels_reduced).sum().item()
             loss_ep_eval += lossvv.item()
 
         acc_32 = 100 * n_correct_32 / n_samples
