@@ -630,7 +630,7 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
 
             n_samples += labels.shape[0]
             n_correct_32_tr += (predictions == labels).sum().item()
-            n_correct_8_tr += (predictions_reduced == labels_reduced).sum().item()
+            n_correct_8_tr += (predictions_reduced_tr == labels_reduced_tr).sum().item()
 
     
             if (i + 1) % 1 == 0:
