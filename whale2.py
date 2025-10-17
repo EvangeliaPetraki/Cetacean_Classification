@@ -1024,7 +1024,7 @@ def get_best_lambda(pi_train1, pi_train2, pi_val1, pi_val2, y_train, y_val, n_la
 
         _, pred_val = torch.max(pi_end_val, dim = 1)
         pred_val_red = pred_val % num_real_classes
-        y_val_red = y_val_red % num_real_classes
+        y_val_red = y_val % num_real_classes
         
         correct_predictions_32 = (pred_val == y_val).sum()
         correct_predictions_8 = (pred_val_red == y_val_red).sum()
