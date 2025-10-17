@@ -701,7 +701,8 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     import time 
     times=[]
     with torch.no_grad():
-        n_correct_fin = 0
+        n_correct_fin_8 = 0
+        n_correct_fin_32 = 0
         n_samples = 0
     
         for x, labels in val_dataloader:
@@ -776,7 +777,6 @@ with torch.no_grad():
         outputs = model_wst_2(x)
         list_prob_2_val.append(outputs)
 
-
 prob_train_1=torch.concat(list_prob_1)
 prob_train_2=torch.concat(list_prob_2)
 train=torch.hstack((prob_train_1,prob_train_2))
@@ -805,7 +805,6 @@ class MLP(nn.Module):
         # self.linear3 = nn.Linear(128, 32)
         # self.activation = nn.ReLU()
         # self.dropout = nn.Dropout(p=0.3)
-        
 
     def forward(self, x):
         out=self.linear(x)
@@ -829,7 +828,6 @@ in_dim = 2 * num_classes_used
 # num_classes = 32
 model_MLP = MLP(in_dim, num_classes_used).to(device)
 
-
 criterion = nn.CrossEntropyLoss()
 learning_rate = .001
 optimizer = torch.optim.Adam(model_MLP.parameters(), lr=learning_rate )
@@ -847,7 +845,9 @@ for epoch in range(num_epochs):
 
     loss_ep_train = 0
     n_samples = 0
-    n_correct = 0
+    n_correct_32= 0
+    n_correct_8 = 0
+    
     for i, (x, labels) in enumerate(train_final_load):
 
         x = x.to(device)
@@ -892,8 +892,9 @@ for epoch in range(num_epochs):
 
     with torch.no_grad():
 
-        n_correct = 0
+        n_correct_32 = 0
         n_samples = 0
+        n_correct_8 = 0
 
         for x, labels in val_final_load:
             x = x.to(device)
@@ -1068,7 +1069,9 @@ for epoch in range(num_epochs):
 
     loss_ep_train = 0
     n_samples = 0
-    n_correct = 0
+    n_correct_32 = 0
+    n_correct_8 = 0
+    
     for i, (x, labels) in enumerate(train_hard_load):
 
         x = x.to(device)
@@ -1105,7 +1108,8 @@ for epoch in range(num_epochs):
 
     with torch.no_grad():
 
-        n_correct = 0
+        n_correct_32 = 0
+        n_correct_8 = 0
         n_samples = 0
 
         for x, labels in val_hard_load:
