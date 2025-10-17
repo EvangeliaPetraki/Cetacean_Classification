@@ -589,15 +589,19 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     # num_epochs = 100
     num_epochs = 1
     loss_train = []
-    acc_train = []
-    acc_eval = []
+    acc_train_32 = []
+    acc_train_8 = []
+    acc_eval_32 = []
+    acc_eval_8 = []
     loss_eval = []
     for epoch in range(num_epochs):
         print("starting new epoch ", flush = True)
         print(epoch, flush = True)
         loss_ep_train = 0
         n_samples = 0
-        n_correct = 0
+        n_correct_32_tr = 0
+        n_correct_8_tr = 0
+        
         for i, (x, labels) in enumerate(train_dataloader):
     
             x = x.to(device)
@@ -615,27 +619,45 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     
             loss_ep_train += loss.item()
             _, predictions = torch.max(outputs, 1)
-            print(predictions)
-            print(labels)
 
+            predictions_reduced_tr = predictions % num_real_classes
+            labels_reduced_tr = labels % num_real_classes
             
+            print('these are the predictions before reducing', predictions)
+            print('these are the predictions after reducing', predictions_reduced_tr)
+            print('these are the labels before reducing',labels)
+            print('these are the labels after reducing', labels_reduced_tr)
+
             n_samples += labels.shape[0]
-            n_correct += (predictions == labels).sum().item()
+            n_correct_32_tr += (predictions == labels).sum().item()
+            n_correct_8_tr += (predictions_reduced == labels_reduced).sum().item()
+
     
-    
-    
-            if (i + 1) % 100 == 0:
+            if (i + 1) % 1 == 0:
                 print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
-    
-        acc_tr = 100 * n_correct / n_samples
-        acc_train.append(acc_tr)
+            #     print(f'training accuracy for epoch: {epoch +1} for 32 classes was {accuracy_tr_32:.2f}, ', flush = True)
+            #     print(f'training accuracy for epoch: {epoch +1} for 8 classes was {accuracy_tr_8:.2f}, ', flush = True)
+
+        accuracy_tr_32 = 100 * n_correct_32_tr/n_samples
+        accuracy_tr_8 = 100 * n_correct_8_tr/n_samples
+        
+        if (epoch + 1) % 1 == 0:
+                # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
+                print(f'training accuracy for epoch: {epoch +1} for 32 classes was {accuracy_tr_32:.2f}, ', flush = True)
+                print(f'training accuracy for epoch: {epoch +1} for 8 classes was {accuracy_tr_8:.2f}, ', flush = True)
+
+        
+        # fin_acc_tr_32 = 100 * n_correct / n_samples
+        acc_train_32.append(accuracy_tr_32)
+        acc_train_8.append(accuracy_tr_8)
         loss_train.append(loss_ep_train/len(train_dataloader))
     
         loss_ep_eval = 0
     
         with torch.no_grad():
     
-            n_correct = 0
+            n_correct_32_eval = 0
+            n_correct_8_eval = 0
             n_samples = 0
     
             for x, labels in val_dataloader:
@@ -647,24 +669,34 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     
                 _, predictions = torch.max(outputs, 1)
 
-                outputs_merged = outputs.view(outputs.size(0), num_real_classes, num_repeats).mean(dim=2) #<------- here the 32 pseudoclasses are merged back to 8 
-                _, predictions = torch.max(outputs_merged, 1)
-
+                # outputs_merged = outputs.view(outputs.size(0), num_real_classes, num_repeats).mean(dim=2) #<------- here the 32 pseudoclasses are merged back to 8 
+                # _, predictions = torch.max(outputs_merged, 1)
+                
+                
+                predictions_reduced = predictions % num_real_classes
                 labels_reduced = labels % num_real_classes  
                 
                 n_samples += labels.shape[0]
-                n_correct += (predictions == labels_reduced).sum().item()
+                n_correct_32_eval += (predictions == labels).sum().item()
+                n_correct_8_eval += (predictions_reduced == labels_reduced).sum().item()
                 loss_ep_eval += lossvv.item()
     
-            acc = 100 * n_correct / n_samples
-    
-        acc_eval.append(acc)
+            acc_32 = 100 * n_correct_32_eval / n_samples
+            acc_8 = 100 * n_correct_8_eval / n_samples
+            
+        acc_eval_32.append(acc_32)
+        acc_eval_8.append(acc_8)
         loss_eval.append(loss_ep_eval/len(val_dataloader))
-    
-        print(f' validation accuracy = {acc}', flush = True)
+
+        
+        if (epoch + 1) % 1 == 0:
+                # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
+                print(f'validation accuracy for epoch: {epoch +1} for 32 classes was {acc_32:.2f}, ', flush = True)
+                print(f'validation accuracy for epoch: {epoch +1} for 8 classes was {acc_8:.2f}, ', flush = True)
+            
         # scheduler.step(loss_eval[-1])
     
-    res = np.array([loss_train, loss_eval, acc_train, acc_eval])
+    res = np.array([loss_train, loss_eval, acc_train_32, acc_eval_32])
     
     
     namefile = f'{fname}_{J,Q}_{batch_size}'
