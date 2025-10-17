@@ -586,8 +586,8 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     criterion = nn.CrossEntropyLoss()
     
     n_total_steps = len(train_dataloader)
-    # num_epochs = 100
-    num_epochs = 1
+    num_epochs = 100
+    # num_epochs = 1
     loss_train = []
     acc_train_32 = []
     acc_train_8 = []
@@ -641,7 +641,7 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
         accuracy_tr_32 = 100 * n_correct_32_tr/n_samples
         accuracy_tr_8 = 100 * n_correct_8_tr/n_samples
         
-        if (epoch + 1) % 1 == 0:
+        if (epoch + 1) % 10 == 0:
                 # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
                 print(f'Resnet training accuracy for epoch: {epoch +1} for 32 classes was {accuracy_tr_32:.2f}, ', flush = True)
                 print(f'Resnet training accuracy for epoch: {epoch +1} for 8 classes was {accuracy_tr_8:.2f}, ', flush = True)
@@ -833,8 +833,8 @@ learning_rate = .001
 optimizer = torch.optim.Adam(model_MLP.parameters(), lr=learning_rate )
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 n_total_steps = len(train_final_load)
-# num_epochs = 500
-num_epochs = 1
+num_epochs = 500
+# num_epochs = 1
 
 loss_train = []
 acc_train_32 = []
@@ -877,7 +877,7 @@ for epoch in range(num_epochs):
     acc_tr_32 = 100 * n_correct_32 / n_samples
     acc_tr_8 = 100 * n_correct_8 / n_samples
 
-    if epoch % 1 == 0: 
+    if epoch % 50 == 0: 
         print(f"MLP training: Epoch [{epoch+1}/{num_epochs}]  |  Train Acc for 32 classes: {acc_tr_32:.2f}%  | Train Acc for 8 classes: {acc_tr_8:.2f}%  |  Train Loss: {loss_ep_train:.4f} ", flush=True)
     
 
@@ -918,7 +918,7 @@ for epoch in range(num_epochs):
     acc_eval_32.append(acc_32)
     loss_eval.append(loss_ep_eval/len(val_final_load))
 
-    if epoch%1==0:
+    if epoch%50==0:
         print(f' MLP validation accuracy for 32 classes = {acc_32}, while for 8 classes = {acc_8}', flush = True)
     
     # scheduler.step(loss_eval[-1])
@@ -995,8 +995,8 @@ n_correct_8 = (predictions_red == y_testXX_red.to(device)).sum().item()
 accuracy_32=n_correct_32/predictions.shape[0]
 accuracy_8 =n_correct_8/predictions.shape[0]
 final_res = {}
-print(f'Final accuracy for 32 classes = {accuracy_32}', flush = True)
-print(f'Final accuracy for 8 classes = {accuracy_8}', flush = True)
+print(f'Final training accuracy for MLP model for 32 classes = {accuracy_32}', flush = True)
+print(f'Final training for MLP model accuracy for 8 classes = {accuracy_8}', flush = True)
 
 final_res['max_merge'] = accuracy_32
 
@@ -1058,8 +1058,8 @@ learning_rate = .001
 optimizer = torch.optim.Adam(model_MLP.parameters(), lr=learning_rate )
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 n_total_steps = len(train_hard_load)
-# num_epochs = 500
-num_epochs = 1
+num_epochs = 500
+# num_epochs = 1
 
 loss_train = []
 acc_train_32 = []
@@ -1096,8 +1096,8 @@ for epoch in range(num_epochs):
         n_correct_32 += (predictions == labels).sum().item()
         n_correct_8 += (predictions_red == labels_red).sum().item()
 
-        if (i + 1) % 1 == 0:
-            print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
+        # if (i + 1) % 1 == 0:
+            # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
 
     acc_tr_32 = 100 * n_correct_32 / n_samples
     acc_tr_8 = 100 * n_correct_8 / n_samples
@@ -1134,7 +1134,7 @@ for epoch in range(num_epochs):
     acc_eval_32.append(acc_32)
     loss_eval.append(loss_ep_eval/len(val_hard_load))
 
-    if epoch%1==0:
+    if epoch%50==0:
         print(f' MEL 2 validation accuracy for 32 classes = {acc_32}', flush = True)
         print(f' MEL 2 validation accuracy for 8 classes = {acc_8}', flush = True)
     
