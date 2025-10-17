@@ -111,7 +111,7 @@ class MelSpecDataset(torch.utils.data.Dataset):
         # m = m.unsqueeze(0)           # (1, n_mels, time) -> conv2d input
         return m, y
 
-def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Training Progress", fname="training_curves.png"):
+def plot_training_curves(loss_train, loss_eval, acc_train_32, acc_eval_32, title="Training Progress", fname="training_curves.png"):
     epochs = range(1, len(loss_train) + 1)
 
     plt.figure(figsize=(12, 5))
@@ -128,8 +128,8 @@ def plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="Trai
 
     # Accuracy
     plt.subplot(1, 2, 2)
-    plt.plot(epochs, acc_train, label="Train Accuracy")
-    plt.plot(epochs, acc_eval, label="Validation Accuracy")
+    plt.plot(epochs, acc_train_32, label="Train Accuracy")
+    plt.plot(epochs, acc_eval_32, label="Validation Accuracy")
     plt.xlabel("Epochs")
     plt.ylabel("Accuracy (%)")
     plt.title("Accuracy over Epochs")
@@ -643,8 +643,8 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
         
         if (epoch + 1) % 1 == 0:
                 # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
-                print(f'training accuracy for epoch: {epoch +1} for 32 classes was {accuracy_tr_32:.2f}, ', flush = True)
-                print(f'training accuracy for epoch: {epoch +1} for 8 classes was {accuracy_tr_8:.2f}, ', flush = True)
+                print(f'Resnet training accuracy for epoch: {epoch +1} for 32 classes was {accuracy_tr_32:.2f}, ', flush = True)
+                print(f'Resnet training accuracy for epoch: {epoch +1} for 8 classes was {accuracy_tr_8:.2f}, ', flush = True)
 
         
         # fin_acc_tr_32 = 100 * n_correct / n_samples
@@ -668,10 +668,6 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
                 lossvv = criterion(outputs, labels)
     
                 _, predictions = torch.max(outputs, 1)
-
-                # outputs_merged = outputs.view(outputs.size(0), num_real_classes, num_repeats).mean(dim=2) #<------- here the 32 pseudoclasses are merged back to 8 
-                # _, predictions = torch.max(outputs_merged, 1)
-                
                 
                 predictions_reduced = predictions % num_real_classes
                 labels_reduced = labels % num_real_classes  
@@ -688,14 +684,10 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
         acc_eval_8.append(acc_8)
         loss_eval.append(loss_ep_eval/len(val_dataloader))
 
-        
         if (epoch + 1) % 1 == 0:
-                # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
-                print(f'validation accuracy for epoch: {epoch +1} for 32 classes was {acc_32:.2f}, ', flush = True)
-                print(f'validation accuracy for epoch: {epoch +1} for 8 classes was {acc_8:.2f}, ', flush = True)
-            
-        # scheduler.step(loss_eval[-1])
-    
+                print(f'Resnet validation accuracy for epoch: {epoch +1} for 32 classes was {acc_32:.2f}, ', flush = True)
+                print(f'Resnet validation accuracy for epoch: {epoch +1} for 8 classes was {acc_8:.2f}, ', flush = True)
+                
     res = np.array([loss_train, loss_eval, acc_train_32, acc_eval_32])
     
     
@@ -709,7 +701,7 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
     import time 
     times=[]
     with torch.no_grad():
-        n_correct = 0
+        n_correct_fin = 0
         n_samples = 0
     
         for x, labels in val_dataloader:
@@ -723,15 +715,21 @@ def training_resnet(model,train_dataloader,val_dataloader,learning_rate,optimize
             pr_out = torch.softmax(outputs, dim = 1)
     
             proba, predictions = torch.max(pr_out, 1)
-    
+
+            predictions_fin_refuced = predictions % num_real_classes
+            labels_fin_reduced = labels % num_real_classes
+            
             yp.append(predictions.cpu().numpy())
             ytr.append(labels.cpu().numpy())
             y_prob.append(pr_out.cpu().numpy())
             n_samples += labels.shape[0]
-            n_correct += (predictions == labels).sum().item()
-    
+            n_correct_fin_32 += (predictions == labels).sum().item()
+            n_correct_fin_8 += (predictions_fin_reduced == labels_fin_reduced).sum().item()
+
+
         
-        acc = 100 * n_correct / n_samples
+        acc_fin_32 = 100 * n_correct_fin_32 / n_samples
+        acc_fin_8 = 100* n_correct_fin_32 / n_samples
 
 
 training_resnet(model_mel,train_dataloader_mel,val_dataloader_mel,learning_rate_mel,optimizer_mel,scheduler_mel, 'modelmel', num_real_classes, num_repeats)
@@ -742,10 +740,12 @@ train_dataloader_1_fin = DataLoader(train_dataset_1, batch_size=batch_size, shuf
 val_dataloader_1_fin = DataLoader(val_dataset_1, batch_size=batch_size, shuffle=False)
 train_dataloader_2_fin = DataLoader(train_dataset_2, batch_size=batch_size, shuffle=False)
 val_dataloader_2_fin = DataLoader(val_dataset_2, batch_size=batch_size, shuffle=False)
+
 list_prob_1=[]
 list_prob_2=[]
 list_prob_1_val=[]
 list_prob_2_val=[]
+
 with torch.no_grad():
 
     n_correct = 0
@@ -839,9 +839,10 @@ n_total_steps = len(train_final_load)
 num_epochs = 1
 
 loss_train = []
-acc_train = []
-acc_eval = []
+acc_train_32 = []
+acc_eval_32 = []
 loss_eval = []
+
 for epoch in range(num_epochs):
 
     loss_ep_train = 0
@@ -865,19 +866,26 @@ for epoch in range(num_epochs):
         loss_ep_train += loss.item()
         _, predictions = torch.max(outputs, 1)
 
+        predictions_reduced_mlp = predictions % num_real_classes
+        labels_reduced_mlp = labels % num_real_classes
+
         n_samples += labels.shape[0]
-        n_correct += (predictions == labels).sum().item()
+        n_correct_32 += (predictions == labels).sum().item()
+        n_correct_8 += (predictions_reduced_mlp == labels_reduced_mlp).sum().item()
 
-        acc_tr = 100 * n_correct / n_samples
 
-        print(f"Epoch [{epoch+1}/{num_epochs}]  |  Train Acc: {acc_tr:.2f}%  |  Train Loss: {loss_ep_train:.4f} ", flush=True)
+    acc_tr_32 = 100 * n_correct_32 / n_samples
+    acc_tr_8 = 100 * n_correct_8 / n_samples
 
+    if epoch % 1 == 0: 
+        print(f"MLP training: Epoch [{epoch+1}/{num_epochs}]  |  Train Acc for 32 classes: {acc_tr_32:.2f}%  | Train Acc for 8 classes: {acc_tr_8:.2f}%  |  Train Loss: {loss_ep_train:.4f} ", flush=True)
+    
 
         # if (i + 1) % 100 == 0:
             # print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
     
-    acc_tr = 100 * n_correct / n_samples
-    acc_train.append(acc_tr)
+    # acc_tr = 100 * n_correct / n_samples
+    acc_train_32.append(acc_tr_32)
     loss_train.append(loss_ep_train/len(train_final_load))
 
     loss_ep_eval = 0
@@ -896,29 +904,34 @@ for epoch in range(num_epochs):
 
             _, predictions = torch.max(outputs, 1)
 
+            predictions_reduced_mlp_val = predictions % num_real_classes
+            labels_reduced_mlp_val = labels % num_real_classes
+
             n_samples += labels.shape[0]
-            n_correct += (predictions == labels).sum().item()
+            n_correct_32 += (predictions == labels).sum().item()
+            n_correct_8 += (predictions_reduced_mlp_val == labels_reduced_mlp_val).sum().item()
             loss_ep_eval += lossvv.item()
 
-        acc = 100 * n_correct / n_samples
-    acc_eval.append(acc)
+        acc_32 = 100 * n_correct_32 / n_samples
+        acc_8 = 100 * n_correct_8 / n_samples
+    acc_eval_32.append(acc_32)
     loss_eval.append(loss_ep_eval/len(val_final_load))
 
-    if epoch%100==0:
-        print(f' validation accuracy = {acc}', flush = True)
+    if epoch%1==0:
+        print(f' MLP validation accuracy for 32 classes = {acc_32}, while for 8 classes = {acc_8}', flush = True)
     
     # scheduler.step(loss_eval[-1])
 
-res = np.array([loss_train, loss_eval, acc_train, acc_eval])
+res = np.array([loss_train, loss_eval, acc_train_32, acc_eval_32])
 
 namefile = f'S1+S2_{J,Q}_{batch_size}'
 np.save(namefile, res)
 
-    
 train_dataloader_mel_fin = DataLoader(train_dataset_mel, batch_size=batch_size, shuffle=False)
 val_dataloader_mel_fin = DataLoader(val_dataset_mel, batch_size=batch_size, shuffle=False)
 list_prob_mel=[]
 list_prob_mel_val=[]
+
 with torch.no_grad():
 
     n_correct = 0
@@ -930,6 +943,7 @@ with torch.no_grad():
         labels = labels.to(device)
         outputs = model_mel(x)
         list_prob_mel.append(outputs)
+  
     for x, labels in val_dataloader_mel_fin:
         x = x.to(device)
 
@@ -970,15 +984,21 @@ prob_val_mel=torch.concat(list_prob_mel_val)
 outputs=torch.max(torch.hstack((prob_val_star.unsqueeze(1),prob_val_mel.unsqueeze(1))),1)[0]
 # print(outputs.shape)
 _, predictions = torch.max(outputs, 1)
+predictions_red = predictions % num_real_classes
 # n_correct = (predictions == y_testXX.cuda() ).sum().item()
+y_testXX_red = y_testXX % num_real_classes
 
-n_correct = (predictions == y_testXX.to(device)).sum().item()
+n_correct_32 = (predictions == y_testXX.to(device)).sum().item()
+n_correct_8 = (predictions_red == y_testXX_red.to(device)).sum().item()
 
-
-accuracy=n_correct/predictions.shape[0]
+accuracy_32=n_correct_32/predictions.shape[0]
+accuracy_8 =n_correct_8/predictions.shape[0]
 final_res = {}
-print(f'{accuracy}', flush = True)
-final_res['max_merge'] = accuracy
+print(f'Final accuracy for 32 classes = {accuracy_32}', flush = True)
+print(f'Final accuracy for 8 classes = {accuracy_8}', flush = True)
+
+final_res['max_merge'] = accuracy_32
+
 def get_best_lambda(pi_train1, pi_train2, pi_val1, pi_val2, y_train, y_val, n_lambda = 11):
 
     lambda_range = np.linspace(0,1, n_lambda)
@@ -991,25 +1011,28 @@ def get_best_lambda(pi_train1, pi_train2, pi_val1, pi_val2, y_train, y_val, n_la
 
         pi_end_val = l * pi_val1 + (1- l) * pi_val2
 
- 
-
         _, pred_train = torch.max(pi_end_train, dim = 1)
-
-        correct_predictions = (pred_train == y_train).sum()
-
-        acc_train = correct_predictions/y_train.shape[0]
-
- 
+        pred_train_red = pred_train % num_real_classes
+        y_train_red = y_train % num_real_classes
+        
+        correct_predictions_32 = (pred_train == y_train).sum()
+        correct_predictions_8 = (pred_train_red == y_train_red).sum()
+        
+        acc_train_32 = correct_predictions_32/y_train.shape[0]
+        acc_train_8 = correct_predictions_8/y_train.shape[0]
 
         _, pred_val = torch.max(pi_end_val, dim = 1)
+        pred_val_red = pred_val % num_real_classes
+        y_val_red = y_val_red % num_real_classes
+        
+        correct_predictions_32 = (pred_val == y_val).sum()
+        correct_predictions_8 = (pred_val_red == y_val_red).sum()
+    
+        acc_val_32 = correct_predictions_32/y_val.shape[0]
+        acc_val_8 = correct_predictions_8/y_val.shape[0]
 
-        correct_predictions = (pred_val == y_val).sum()
-
-        acc_val = correct_predictions/y_val.shape[0]
-
- 
-
-        res[l] = [acc_train.item(), acc_val.item()]
+        
+        res[l] = [acc_train_32.item(), acc_val_32.item()]
     return res
 # print(get_best_lambda(prob_train_star, prob_train_mel, prob_val_star, prob_val_mel, y_trXX.cuda(), y_testXX.cuda(), n_lambda = 31))
 print(get_best_lambda(prob_train_star, prob_train_mel, prob_val_star, prob_val_mel, y_trXX.to(device), y_testXX.to(device), n_lambda = 31), flush = True)
@@ -1038,8 +1061,8 @@ n_total_steps = len(train_hard_load)
 num_epochs = 1
 
 loss_train = []
-acc_train = []
-acc_eval = []
+acc_train_32 = []
+acc_eval_32 = []
 loss_eval = []
 for epoch in range(num_epochs):
 
@@ -1063,17 +1086,19 @@ for epoch in range(num_epochs):
 
         loss_ep_train += loss.item()
         _, predictions = torch.max(outputs, 1)
+        predictions_red = predictions % num_real_classes
+        labels_red = labels % num_real_classes
 
         n_samples += labels.shape[0]
-        n_correct += (predictions == labels).sum().item()
+        n_correct_32 += (predictions == labels).sum().item()
+        n_correct_8 += (predictions_red == labels_red).sum().item()
 
-
-
-        if (i + 1) % 100 == 0:
+        if (i + 1) % 1 == 0:
             print(f'epoch: {epoch + 1}, step: {i + 1}/{n_total_steps}, loss:{loss.item():.4f}, ', flush = True)
 
-    acc_tr = 100 * n_correct / n_samples
-    acc_train.append(acc_tr)
+    acc_tr_32 = 100 * n_correct_32 / n_samples
+    acc_tr_8 = 100 * n_correct_8 / n_samples
+    acc_train_32.append(acc_tr_32)
     loss_train.append(loss_ep_train/len(train_hard_load))
 
     loss_ep_eval = 0
@@ -1091,23 +1116,29 @@ for epoch in range(num_epochs):
             lossvv = criterion(outputs, labels)
 
             _, predictions = torch.max(outputs, 1)
+            predictions_reduced = predictions % num_real_classes
+            labels_reduced = labels % num_real_classes
 
             n_samples += labels.shape[0]
-            n_correct += (predictions == labels).sum().item()
+            n_correct_32 += (predictions == labels).sum().item()
+            n_correct_8 += (predictions_reduced == labels_reduced)
             loss_ep_eval += lossvv.item()
 
-        acc = 100 * n_correct / n_samples
-    acc_eval.append(acc)
+        acc_32 = 100 * n_correct_32 / n_samples
+        acc_8 = 100 * n_correct_8 / n_samples
+    
+    acc_eval_32.append(acc_32)
     loss_eval.append(loss_ep_eval/len(val_hard_load))
 
-    if epoch%100==0:
-        print(f' validation accuracy = {acc}', flush = True)
+    if epoch%1==0:
+        print(f' MEL 2 validation accuracy for 32 classes = {acc_32}', flush = True)
+        print(f' MEL 2 validation accuracy for 8 classes = {acc_8}', flush = True)
     
     # scheduler.step(loss_eval[-1])
     
-res = np.array([loss_train, loss_eval, acc_train, acc_eval])
+res = np.array([loss_train, loss_eval, acc_train_32, acc_eval_32])
 
 namefile = f'MLP_S+Mel{J,Q}_{batch_size}'
 np.save(namefile, res)
 
-plot_training_curves(loss_train, loss_eval, acc_train, acc_eval, title="ResNet Mel Training", fname="resnet_mel_training.png")
+plot_training_curves(loss_train, loss_eval, acc_train_32, acc_eval_32, title="ResNet Mel Training", fname="resnet_mel_training.png")
