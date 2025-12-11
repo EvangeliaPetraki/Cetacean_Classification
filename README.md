@@ -82,6 +82,7 @@ How to Run
 1. Clone the repository and move into it:
    
 `git clone https://github.com/<your-username>/<your-repo>.git`
+
 `cd <your-repo>`
 
 
