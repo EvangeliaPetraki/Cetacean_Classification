@@ -47,12 +47,12 @@ The dataset is expected under a root folder, for example:
 │   ├── file010.wav
 │   └── ...
 └── ...
-````
+```
 
 Each first-level folder name is treated as the class label.
 In the script, set the file variable to your dataset root:
 
-```file = "/path/to/Cetacean_Classification/_common-frecuent"```
+`file = "/path/to/Cetacean_Classification/_common-frecuent"`
 
 Only .wav files are processed.
 
@@ -60,30 +60,29 @@ Only .wav files are processed.
 
 Main Python dependencies:
 
-```- python >= 3.9
-- torch
-- torchaudio
-- numpy
-- pandas
-- scipy
-- soundfile
-- scikit-learn
-- matplotlib
-- kymatio
-```
+- `python >= 3.9`
+- `torch`
+- `torchaudio`
+- `numpy`
+- `pandas`
+- `scipy`
+- `soundfile`
+- `scikit-learn`
+- `matplotlib`
+- `kymatio`
 
 You can install them with:
 
-```pip install torch torchaudio numpy pandas scipy soundfile scikit-learn matplotlib kymatio```
+`pip install torch torchaudio numpy pandas scipy soundfile scikit-learn matplotlib kymatio`
 
 (Adjust the torch/torchaudio install command according to your CUDA setup.)
 
 How to Run
 
 1. Clone the repository and move into it:
-```git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
-```
+`git clone https://github.com/<your-username>/<your-repo>.git`
+`cd <your-repo>`
+
 
 2. Prepare the dataset
 - Place your audio data according to the directory structure above.
@@ -92,7 +91,7 @@ cd <your-repo>
 3. Run training
 Assuming the main script is named marine_mammal_classification.py:
 
-```python marine_mammal_classification.py```
+`python marine_mammal_classification.py`
 
 
 The script will:
@@ -108,9 +107,9 @@ The script will:
 - Save training curves to *.npy and *.png files.
 
 ## Outputs
-- ```modelmel_...npy, modelws1_...npy, modelws2_...npy```: training logs for each ResNet.
-- ```S1+S2_...npy, MLP_S+Mel...npy```: training logs for the MLP fusion models.
-- ```resnet_mel_training.png```: example training curve visualization.
+- `modelmel_...npy, modelws1_...npy, modelws2_...npy`: training logs for each ResNet.
+- `S1+S2_...npy, MLP_S+Mel...npy`: training logs for the MLP fusion models.
+- `resnet_mel_training.png`: example training curve visualization.
 - Console logs with:
   - Epoch-wise training/validation accuracies.
   - Final species-level accuracy for different fusion strategies.
