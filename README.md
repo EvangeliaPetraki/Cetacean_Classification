@@ -86,9 +86,10 @@ How to Run
 `cd <your-repo>`
 
 
-3. Prepare the dataset
+2. Prepare the dataset
 - Place your audio data according to the directory structure above.
 - Update the file path in the script.
+
 
 3. Run training
 Assuming the main script is named `marine_mammal_classification.py`:
