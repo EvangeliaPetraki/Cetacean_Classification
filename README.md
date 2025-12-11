@@ -60,7 +60,7 @@ Only .wav files are processed.
 
 Main Python dependencies:
 
-- python >= 3.9
+```- python >= 3.9
 - torch
 - torchaudio
 - numpy
@@ -70,6 +70,7 @@ Main Python dependencies:
 - scikit-learn
 - matplotlib
 - kymatio
+```
 
 You can install them with:
 
@@ -107,9 +108,9 @@ The script will:
 - Save training curves to *.npy and *.png files.
 
 ## Outputs
-- modelmel_...npy, modelws1_...npy, modelws2_...npy: training logs for each ResNet.
-- S1+S2_...npy, MLP_S+Mel...npy: training logs for the MLP fusion models.
-- resnet_mel_training.png: example training curve visualization.
+- ```modelmel_...npy, modelws1_...npy, modelws2_...npy```: training logs for each ResNet.
+- ```S1+S2_...npy, MLP_S+Mel...npy```: training logs for the MLP fusion models.
+- ```resnet_mel_training.png```: example training curve visualization.
 - Console logs with:
   - Epoch-wise training/validation accuracies.
   - Final species-level accuracy for different fusion strategies.
