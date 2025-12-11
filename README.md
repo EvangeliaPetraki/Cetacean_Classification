@@ -80,16 +80,17 @@ You can install them with:
 How to Run
 
 1. Clone the repository and move into it:
+   
 `git clone https://github.com/<your-username>/<your-repo>.git`
 `cd <your-repo>`
 
 
-2. Prepare the dataset
+3. Prepare the dataset
 - Place your audio data according to the directory structure above.
 - Update the file path in the script.
 
 3. Run training
-Assuming the main script is named marine_mammal_classification.py:
+Assuming the main script is named `marine_mammal_classification.py`:
 
 `python marine_mammal_classification.py`
 
