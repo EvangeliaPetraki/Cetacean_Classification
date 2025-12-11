@@ -47,3 +47,19 @@ The dataset is expected under a root folder, for example:
 │   ├── file010.wav
 │   └── ...
 └── ...
+````
+
+## Data Augmentation (Optional)
+
+The script includes optional augmentation utilities:
+
+- Waveform-level augmentations (augment_waveform):
+  - Additive Gaussian noise.
+  - Random gain jitter.
+  - Small circular time-shifts.
+- Spectrogram-level augmentations (augment_spectrogram):
+  - Frequency masking.
+  - Time masking (SpecAugment-style).
+
+These are currently commented out in the dataset classes (AugmentedTensorDataset, MelSpecDataset).
+You can enable them by uncommenting the relevant lines to regularise the models and improve generalisation.
