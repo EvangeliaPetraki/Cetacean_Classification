@@ -49,6 +49,72 @@ The dataset is expected under a root folder, for example:
 └── ...
 ````
 
+Each first-level folder name is treated as the class label.
+In the script, set the file variable to your dataset root:
+
+```file = "/path/to/Cetacean_Classification/_common-frecuent"```
+
+Only .wav files are processed.
+
+## Dependencies
+
+Main Python dependencies:
+
+- python >= 3.9
+- torch
+- torchaudio
+- numpy
+- pandas
+- scipy
+- soundfile
+- scikit-learn
+- matplotlib
+- kymatio
+
+You can install them with:
+
+```pip install torch torchaudio numpy pandas scipy soundfile scikit-learn matplotlib kymatio```
+
+(Adjust the torch/torchaudio install command according to your CUDA setup.)
+
+How to Run
+
+1. Clone the repository and move into it:
+```git clone https://github.com/<your-username>/<your-repo>.git
+cd <your-repo>
+```
+
+2. Prepare the dataset
+- Place your audio data according to the directory structure above.
+- Update the file path in the script.
+
+3. Run training
+Assuming the main script is named marine_mammal_classification.py:
+
+```python marine_mammal_classification.py```
+
+
+The script will:
+- Load and preprocess the audio.
+- Build train/validation splits with stratification.
+- Train:
+  - A ResNet on Mel spectrograms.
+  - Two ResNets on scattering coefficients (orders 1 and 2).
+  - An MLP to fuse their logits.
+- Print training and validation accuracies both for:
+  - The expanded pseudo-class problem (e.g. 32 classes),
+  - And the original species-level problem (e.g. 8 classes, via modulo mapping).
+- Save training curves to *.npy and *.png files.
+
+## Outputs
+- modelmel_...npy, modelws1_...npy, modelws2_...npy: training logs for each ResNet.
+- S1+S2_...npy, MLP_S+Mel...npy: training logs for the MLP fusion models.
+- resnet_mel_training.png: example training curve visualization.
+- Console logs with:
+  - Epoch-wise training/validation accuracies.
+  - Final species-level accuracy for different fusion strategies.
+  - Optional lambda-search results for linear combination of probabilities.
+
 ## Data Augmentation (Optional)
 
 The script includes optional augmentation utilities:
