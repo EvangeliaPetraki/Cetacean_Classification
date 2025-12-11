@@ -135,23 +135,3 @@ You can enable them by uncommenting the relevant lines to regularise the models 
 
 
 
-
----
-
-## 2. Portfolio Section (for your PDF/portfolio document)
-
-Here’s a polished, portfolio-ready description of this project:
-
-> **Marine Mammal Bioacoustic Classification (Erasmus+ Research Project)**  
-> *Python, PyTorch, torchaudio, Kymatio, scikit-learn*
->
-> In this project, I developed a complete deep learning pipeline to classify marine mammals from underwater audio recordings. Starting from raw `.wav` files organised by species, I implemented preprocessing steps including resampling to a common sampling rate, centered cutting/padding to a fixed window, class balancing (minimum sample thresholds), and removal of duplicate recordings.  
->  
-> I then explored multiple signal representations: on-the-fly **Mel spectrograms** and **1D wavelet scattering coefficients** (orders 1 and 2) using Kymatio. For each representation, I designed and trained compact **ResNet** architectures and evaluated them both on an extended pseudo-class setting (data repeated with label offsets to create a 4× larger, 32-class problem) and on the original species-level labels via modulo mapping.  
->  
-> To improve robustness, I fused the different feature streams by training an **MLP on concatenated logits** from the scattering-based models and the Mel-spectrogram model, and I also experimented with linear probability combinations. The pipeline logs training curves and model metrics programmatically, and is structured to allow future extensions with data augmentation (waveform and SpecAugment) and additional architectures. This project strengthened my skills in audio preprocessing, representation learning, ensemble methods, and end-to-end experimentation in a conservation-relevant setting.
-
----
-
-Next project you want to do (Haemoproteus, canine echo, etc.), just paste the code and I’ll do the same: README + portfolio section.
-
