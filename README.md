@@ -1,6 +1,6 @@
 # Marine Mammal Bioacoustic Classification
 
-...(Project not finished)...
+...(Project not yet finished)...
 
 This repository contains a deep learning pipeline for **classifying marine mammals from underwater audio recordings**.  
 The project explores multiple audio representations (raw waveform, Mel spectrograms, and wavelet scattering coefficients) and combines them using **ResNet backbones** and a **fusion MLP**.
