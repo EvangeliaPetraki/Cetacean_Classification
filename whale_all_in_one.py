@@ -285,8 +285,10 @@ class MelDataset(Dataset):
     def __getitem__(self, idx):
         wav = self.X[idx].unsqueeze(0)       # [1, T]
         lab = self.y[idx]                   # int
-        mel = self.mel(wav)                 # [n_mels, time]
-        mel = mel.unsqueeze(0)              # [1, n_mels, time]
+        mel = self.mel(wav)
+        if mel.dim() == 2:
+            mel = mel.unsqueeze(0)
+        # mel = mel.unsqueeze(0)              # [1, n_mels, time]
         return mel, lab
 
 
