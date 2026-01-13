@@ -142,7 +142,7 @@ def load_and_preprocess_dataset(
     # If cache exists, load it and return immediately.
     if os.path.exists(cache_path):
         print(f"[Cache] Loading preprocessed data from: {cache_path}", flush=True)
-        ckpt = torch.load(cache_path, map_location="cpu")
+        ckpt = torch.load(cache_path, map_location="cpu",  weights_only=False)
         return ckpt["X"], ckpt["y"]
 
     print("[Data] Loading wav files...", flush=True)
