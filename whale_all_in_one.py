@@ -734,7 +734,7 @@ class ExpCfg:
     seed: int               # random seed
     lr: float = 1e-3
     weight_decay: float = 1e-3
-    patience: int = 3
+    patience: int = 7
     wst_J: int = 8          # sensible default from your trials
     wst_Q: int = 14         # sensible default from your trials
 
@@ -913,7 +913,7 @@ def main():
     # -----------------------------
     features = ["mel", "wst1"]
     models = ["resnet_small", "tinycnn", "mobilenetv3_small"]
-    epoch_budgets = [10, 30]   # few vs many (with early stopping)
+    epoch_budgets = [10, 30, 50]   # few vs many (with early stopping)
     seeds = [0, 1, 2]
 
     # Build experiment list
