@@ -760,12 +760,12 @@ def run_experiment(
     out_dir = os.path.join(out_root, run_id)
     os.makedirs(out_dir, exist_ok=True)
 
-    metrics_path = os.path.join(out_dir, "metrics.json")
+    # metrics_path = os.path.join(out_dir, "metrics.json")
 
-    # Resume logic: if metrics exist, assume run is complete and skip.
-    if os.path.exists(metrics_path):
-        print(f"[Skip] {run_id} already completed.", flush=True)
-        return
+    # # Resume logic: if metrics exist, assume run is complete and skip.
+    # if os.path.exists(metrics_path):
+    #     print(f"[Skip] {run_id} already completed.", flush=True)
+    #     return
 
     print(f"\n[Run] Starting {run_id}", flush=True)
     set_seed(cfg.seed)
@@ -847,8 +847,8 @@ def run_experiment(
     metrics["classes"] = class_names
 
     # Save metrics
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
+    # with open(metrics_path, "w") as f:
+    #     json.dump(metrics, f, indent=2)
 
     print(f"[Run] Finished {run_id} | acc={metrics['val_accuracy']:.4f} macroF1={metrics['val_macro_f1']:.4f}", flush=True)
 
