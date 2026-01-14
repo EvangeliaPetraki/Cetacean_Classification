@@ -52,6 +52,9 @@ from sklearn.metrics import (
     classification_report,
 )
 
+# import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("Agg")   #
 import matplotlib.pyplot as plt
 
 # -----------------------------
@@ -266,29 +269,76 @@ def make_fixed_split(y_int: torch.Tensor, seed: int = 42,
 # -----------------------------
 # 3) Feature datasets
 # -----------------------------
-class MelDataset(Dataset):
-    """
-    Returns Mel spectrogram images for CNNs:
-      waveform [T] -> mel [1, n_mels, time]
-    """
+# class MelDataset(Dataset):
+#     """
+#     Returns Mel spectrogram images for CNNs:
+#       waveform [T] -> mel [1, n_mels, time]
+#     """
 
-    def __init__(self, X: torch.Tensor, y: torch.Tensor, sr: int, n_mels: int = 64):
+#     def __init__(self, X: torch.Tensor, y: torch.Tensor, sr: int, n_mels: int = 64):
+#         self.X = X
+#         self.y = y
+#         self.mel = torchaudio.transforms.MelSpectrogram(
+#             sample_rate=sr, n_mels=n_mels, normalized=True
+#         )
+
+#     def __len__(self):
+#         return len(self.X)
+
+#     def __getitem__(self, idx):
+#         wav = self.X[idx].unsqueeze(0)       # [1, T]
+#         lab = self.y[idx]                   # int
+#         mel = self.mel(wav)
+#         if mel.dim() == 2:
+#             mel = mel.unsqueeze(0)
+#         # mel = mel.unsqueeze(0)              # [1, n_mels, time]
+#         return mel, lab
+
+class MelDataset(Dataset):
+    def __init__(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        sr: int,
+        n_mels: int = 64,
+        n_fft: int = 2048,
+        hop_length: int = 512,
+        f_min: float = 0.0,
+        f_max: float = None,
+    ):
         self.X = X
         self.y = y
+
+        if f_max is None:
+            f_max = sr / 2.0
+
         self.mel = torchaudio.transforms.MelSpectrogram(
-            sample_rate=sr, n_mels=n_mels, normalized=True
+            sample_rate=sr,
+            n_mels=n_mels,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            f_min=f_min,
+            f_max=f_max,
+            power=2.0,            # power spectrogram (needed for AmplitudeToDB)
+            normalized=False,     # leave normalization to us
         )
+        self.to_db = torchaudio.transforms.AmplitudeToDB(stype="power")
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        wav = self.X[idx].unsqueeze(0)       # [1, T]
-        lab = self.y[idx]                   # int
-        mel = self.mel(wav)
-        if mel.dim() == 2:
-            mel = mel.unsqueeze(0)
-        # mel = mel.unsqueeze(0)              # [1, n_mels, time]
+        wav = self.X[idx].unsqueeze(0)   # [1, T]
+        lab = self.y[idx]
+
+        mel = self.mel(wav)             # [1, n_mels, time]
+        mel = self.to_db(mel)           # log-mel
+
+        # Per-example normalization in feature space (helps a lot)
+        mean = mel.mean()
+        std = mel.std().clamp_min(1e-6)
+        mel = (mel - mean) / std
+
         return mel, lab
 
 
@@ -603,7 +653,17 @@ def train_one_run(
             print(f"[Train] Early stop (no val loss improvement for {patience} epochs).", flush=True)
             break
 
+        # Save raw learning curves (easy to inspect after Slurm finishes)
+    with open(os.path.join(out_dir, "history.json"), "w") as f:
+        json.dump(hist, f, indent=2)
+
+    # Also save CSV (handy for quick plotting elsewhere)
+    pd.DataFrame(hist).to_csv(os.path.join(out_dir, "history.csv"), index=False)
+
+    print(f"[Save] Wrote history.json and history.csv to: {out_dir}", flush=True)
+    
     # Plot curves
+
     plt.figure()
     plt.plot(hist["train_loss"], label="train loss")
     plt.plot(hist["val_loss"], label="val loss")
@@ -802,6 +862,10 @@ def main():
     parser.add_argument("--T", type=int, default=8000, help="Fixed waveform length (samples)")
     parser.add_argument("--min_per_class", type=int, default=50, help="Min samples per class")
     args = parser.parse_args()
+
+    print(f"[Paths] out_root = {os.path.abspath(args.out_root)}", flush=True)
+    print(f"[Paths] cache_dir = {os.path.abspath(args.cache_dir)}", flush=True)
+
 
     device = get_device()
     print(f"[System] Device: {device}", flush=True)
