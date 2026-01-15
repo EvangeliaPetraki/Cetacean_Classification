@@ -928,17 +928,20 @@ def run_experiment(
     if cfg.feature == "mel":
         train_ds = MelDataset(X[idx_tr], y_int[idx_tr], sr=sr, n_mels=64)
         val_ds   = MelDataset(X[idx_va], y_int[idx_va], sr=sr, n_mels=64)
+        test_ds  = MelDataset(X[idx_te], y_int[idx_te], sr=sr, n_mels=64)
         in_channels = 1
+
 
     elif cfg.feature == "wst1":
         # Compute scattering features for ALL waveforms (then subset to train/val).
         # This is expensive, but manageable, and gives consistent features.
         # If you want even faster runs, you can cache SX1 per (J,Q) in a file.
         SX1 = compute_wst_order1(
-            X=X, J=cfg.wst_J, Q=cfg.wst_Q, device=device, batch_size=512
-        )
+        X=X, J=cfg.wst_J, Q=cfg.wst_Q, device=device, batch_size=512
+    )
         train_ds = WST1Dataset(SX1[idx_tr], y_int[idx_tr])
         val_ds   = WST1Dataset(SX1[idx_va], y_int[idx_va])
+        test_ds  = WST1Dataset(SX1[idx_te], y_int[idx_te])
         in_channels = 1
 
         # Save scattering shape info (useful for debugging / paper reporting)
@@ -950,6 +953,8 @@ def run_experiment(
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
     val_loader   = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=0)
+
 
     # Build model
     model = build_model(cfg.model, num_classes=num_classes, in_channels=in_channels)
@@ -971,15 +976,55 @@ def run_experiment(
         patience=cfg.patience,
         out_dir=out_dir,
     )
+    
+
+    # At this point train_one_run() has already loaded best.pt back into `model`
+    y_true_te, y_pred_te = evaluate(model, test_loader, device)
+
+    metrics.update({
+        "test_accuracy": float(accuracy_score(y_true_te, y_pred_te)),
+        "test_macro_f1": float(f1_score(y_true_te, y_pred_te, average="macro")),
+        "test_weighted_f1": float(f1_score(y_true_te, y_pred_te, average="weighted")),
+        "n_test": int(len(y_true_te)),
+    })
+
+    # Optional: save test confusion + report
+    cm_te = confusion_matrix(y_true_te, y_pred_te)
+    plt.figure(figsize=(6, 5))
+    plt.imshow(cm_te)
+    plt.title("TEST confusion matrix")
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "confusion_test.png"), dpi=200)
+    plt.close()
+
+    report_te = classification_report(y_true_te, y_pred_te, digits=4)
+    with open(os.path.join(out_dir, "classification_report_test.txt"), "w") as f:
+        f.write(report_te)
+
+    print(
+        f"[Test] {run_id} | acc={metrics['test_accuracy']:.4f} "
+        f"macroF1={metrics['test_macro_f1']:.4f}",
+        flush=True
+    )
+
     metrics["runtime_sec"] = float(time.time() - start)
     metrics["num_classes"] = int(num_classes)
     metrics["classes"] = class_names
+
+
 
     # Save metrics
     # with open(metrics_path, "w") as f:
     #     json.dump(metrics, f, indent=2)
 
-    print(f"[Run] Finished {run_id} | acc={metrics['val_accuracy']:.4f} macroF1={metrics['val_macro_f1']:.4f}", flush=True)
+    print(
+        f"[Run] Finished {run_id} | "
+        f"val_acc={metrics['val_accuracy']:.4f} val_macroF1={metrics['val_macro_f1']:.4f} | "
+        f"test_acc={metrics['test_accuracy']:.4f} test_macroF1={metrics['test_macro_f1']:.4f}",
+        flush=True
+    )
 
 
 def main():
