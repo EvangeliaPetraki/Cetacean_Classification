@@ -40,7 +40,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.functional import pad
-
+import torch.nn.functional as F
 import torchaudio
 
 from sklearn.model_selection import train_test_split
@@ -494,15 +494,124 @@ class TinyCNN(nn.Module):
     def forward(self, x):
         x = self.net(x).flatten(1)
         return self.fc(x)
-
-
-def build_mobilenetv3_small(num_classes: int, in_channels: int = 1) -> nn.Module:
+    
+class ResizeWrapper(nn.Module):
     """
-    MobileNetV3-small from torchvision, adapted for 1-channel inputs.
+    Wrap a torchvision image model so it can handle small spectrogram inputs.
 
-    Why it's included:
-    - lightweight architecture family very different from ResNet
-    - good test of 'do we need residual nets at all?'
+    Your mel/WST "images" can be ~64 x ~16 (very small). EfficientNet/MobileNet
+    downsample a lot, so we upsample first to a stable size (e.g., 224x224).
+    """
+    def __init__(self, backbone: nn.Module, size: int = 224, mode: str = "bilinear"):
+        super().__init__()
+        self.backbone = backbone
+        self.size = size
+        self.mode = mode
+
+    def forward(self, x):
+        # x: [B, C, H, W]
+        if x.shape[-2] != self.size or x.shape[-1] != self.size:
+            x = F.interpolate(x, size=(self.size, self.size), mode=self.mode, align_corners=False)
+        return self.backbone(x)
+
+
+def _replace_first_conv(model: nn.Module, in_channels: int = 1):
+    """
+    Replace the very first Conv2d layer in torchvision EfficientNet/MobileNet-like models
+    to accept in_channels instead of 3.
+    """
+    # EfficientNet / EfficientNetV2 in torchvision: model.features[0][0] is Conv2d
+    first = model.features[0][0]
+    model.features[0][0] = nn.Conv2d(
+        in_channels=in_channels,
+        out_channels=first.out_channels,
+        kernel_size=first.kernel_size,
+        stride=first.stride,
+        padding=first.padding,
+        bias=False,
+    )
+    return model
+
+
+def build_efficientnet(model_name: str, num_classes: int, in_channels: int = 1, resize_to: int = 224) -> nn.Module:
+    """
+    Supports:
+      - efficientnet_b0 ... efficientnet_b7
+      - efficientnet_v2_s, efficientnet_v2_m, efficientnet_v2_l
+    """
+    try:
+        from torchvision import models
+    except Exception as e:
+        raise RuntimeError("torchvision is required for EfficientNet models.") from e
+
+    name = model_name.lower()
+
+    # --- EfficientNet B0..B7 ---
+    if name.startswith("efficientnet_b"):
+        ctor = getattr(models, name, None)
+        if ctor is None:
+            raise ValueError(f"torchvision.models has no constructor named '{name}'.")
+        model = ctor(weights=None)
+        model = _replace_first_conv(model, in_channels=in_channels)
+
+        # classifier is Sequential(Dropout, Linear)
+        in_feats = model.classifier[-1].in_features
+        model.classifier[-1] = nn.Linear(in_feats, num_classes)
+
+        return ResizeWrapper(model, size=resize_to)
+
+    # --- EfficientNetV2 (S/M/L) ---
+    if name in {"efficientnet_v2_s", "efficientnet_v2_m", "efficientnet_v2_l"}:
+        ctor = getattr(models, name, None)
+        if ctor is None:
+            raise ValueError(
+                f"torchvision.models has no constructor named '{name}'. "
+                "Your torchvision may be too old for EfficientNetV2."
+            )
+        model = ctor(weights=None)
+        model = _replace_first_conv(model, in_channels=in_channels)
+
+        in_feats = model.classifier[-1].in_features
+        model.classifier[-1] = nn.Linear(in_feats, num_classes)
+
+        return ResizeWrapper(model, size=resize_to)
+
+    raise ValueError(f"Unknown EfficientNet family model: {model_name}")
+
+
+# def build_mobilenetv3_small(num_classes: int, in_channels: int = 1) -> nn.Module:
+#     """
+#     MobileNetV3-small from torchvision, adapted for 1-channel inputs.
+
+#     Why it's included:
+#     - lightweight architecture family very different from ResNet
+#     - good test of 'do we need residual nets at all?'
+#     """
+#     from torchvision.models import mobilenet_v3_small
+
+#     model = mobilenet_v3_small(weights=None)
+
+#     # Replace first conv to accept 1-channel input instead of 3-channel RGB
+#     first_conv = model.features[0][0]
+#     model.features[0][0] = nn.Conv2d(
+#         in_channels,
+#         first_conv.out_channels,
+#         kernel_size=first_conv.kernel_size,
+#         stride=first_conv.stride,
+#         padding=first_conv.padding,
+#         bias=False,
+#     )
+
+#     # Replace classifier output layer
+#     in_feats = model.classifier[-1].in_features
+#     model.classifier[-1] = nn.Linear(in_feats, num_classes)
+
+#     return model
+
+def build_mobilenetv3_small(num_classes: int, in_channels: int = 1, resize_to: int = 224) -> nn.Module:
+    """
+    MobileNetV3-small adapted for 1-channel inputs + resized inputs to avoid
+    collapsing tiny spectrograms through heavy downsampling.
     """
     from torchvision.models import mobilenet_v3_small
 
@@ -523,18 +632,38 @@ def build_mobilenetv3_small(num_classes: int, in_channels: int = 1) -> nn.Module
     in_feats = model.classifier[-1].in_features
     model.classifier[-1] = nn.Linear(in_feats, num_classes)
 
-    return model
+    return ResizeWrapper(model, size=resize_to)
 
 
 def build_model(model_name: str, num_classes: int, in_channels: int = 1) -> nn.Module:
     """Factory function to build a model by name."""
-    if model_name == "resnet_small":
+    name = model_name.lower()
+
+    if name == "resnet_small":
         return ResNetSmall(num_classes=num_classes, in_channels=in_channels)
-    if model_name == "tinycnn":
+    if name == "tinycnn":
         return TinyCNN(num_classes=num_classes, in_channels=in_channels)
-    if model_name == "mobilenetv3_small":
-        return build_mobilenetv3_small(num_classes=num_classes, in_channels=in_channels)
+
+    # Keep MobileNet but improved (resizing)
+    if name == "mobilenetv3_small":
+        return build_mobilenetv3_small(num_classes=num_classes, in_channels=in_channels, resize_to=224)
+
+    # EfficientNet family (B0..B7) + EfficientNetV2 (S/M/L)
+    if name.startswith("efficientnet_b") or name.startswith("efficientnet_v2_"):
+        return build_efficientnet(name, num_classes=num_classes, in_channels=in_channels, resize_to=224)
+
     raise ValueError(f"Unknown model_name: {model_name}")
+
+
+# def build_model(model_name: str, num_classes: int, in_channels: int = 1) -> nn.Module:
+#     """Factory function to build a model by name."""
+#     if model_name == "resnet_small":
+#         return ResNetSmall(num_classes=num_classes, in_channels=in_channels)
+#     if model_name == "tinycnn":
+#         return TinyCNN(num_classes=num_classes, in_channels=in_channels)
+#     if model_name == "mobilenetv3_small":
+#         return build_mobilenetv3_small(num_classes=num_classes, in_channels=in_channels)
+#     raise ValueError(f"Unknown model_name: {model_name}")
 
 
 # -----------------------------
@@ -912,7 +1041,24 @@ def main():
     # Define the full experiment grid
     # -----------------------------
     features = ["mel", "wst1"]
-    models = ["resnet_small", "tinycnn", "mobilenetv3_small"]
+    # models = ["resnet_small", "tinycnn", "mobilenetv3_small"]
+    models = [
+    "resnet_small",
+    "tinycnn",
+
+    # improved mobilenet (resizes inputs)
+    "mobilenetv3_small",
+
+    # EfficientNet B-family
+    "efficientnet_b0",
+    "efficientnet_b2",
+    "efficientnet_b4",
+
+    # EfficientNetV2
+    "efficientnet_v2_s",
+    "efficientnet_v2_m",
+]
+
     epoch_budgets = [10, 30, 50]   # few vs many (with early stopping)
     seeds = [0, 1, 2]
 
