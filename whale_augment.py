@@ -1188,7 +1188,7 @@ def main():
     "efficientnet_v2_m",
 ]
 
-    epoch_budgets = [10, 30, 50]   # few vs many (with early stopping)
+    epoch_budgets = [20, 40, 60]   # few vs many (with early stopping)
     seeds = [0, 1, 2]
 
     # Build experiment list
