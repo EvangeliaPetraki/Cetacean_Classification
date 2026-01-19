@@ -968,10 +968,11 @@ def run_experiment(
     batch_size = 64
 
     if cfg.feature == "mel":
-        train_ds = MelDataset(X[idx_tr], y_int[idx_tr], sr=sr, n_mels=64)
-        val_ds   = MelDataset(X[idx_va], y_int[idx_va], sr=sr, n_mels=64)
-        test_ds  = MelDataset(X[idx_te], y_int[idx_te], sr=sr, n_mels=64)
+        train_ds = MelDataset(X[idx_tr], y_int[idx_tr], sr=sr, n_mels=64, train=True)
+        val_ds   = MelDataset(X[idx_va], y_int[idx_va], sr=sr, n_mels=64, train=False)
+        test_ds  = MelDataset(X[idx_te], y_int[idx_te], sr=sr, n_mels=64, train=False)
         in_channels = 1
+
 
 
     elif cfg.feature == "wst1":
