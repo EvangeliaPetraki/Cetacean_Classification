@@ -543,21 +543,49 @@ class ResizeWrapper(nn.Module):
         return self.backbone(x)
 
 
+# def _replace_first_conv(model: nn.Module, in_channels: int = 1):
+#     """
+#     Replace the very first Conv2d layer in torchvision EfficientNet/MobileNet-like models
+#     to accept in_channels instead of 3.
+#     """
+#     # EfficientNet / EfficientNetV2 in torchvision: model.features[0][0] is Conv2d
+#     first = model.features[0][0]
+#     model.features[0][0] = nn.Conv2d(
+#         in_channels=in_channels,
+#         out_channels=first.out_channels,
+#         kernel_size=first.kernel_size,
+#         stride=first.stride,
+#         padding=first.padding,
+#         bias=False,
+#     )
+#     return model
+
 def _replace_first_conv(model: nn.Module, in_channels: int = 1):
     """
     Replace the very first Conv2d layer in torchvision EfficientNet/MobileNet-like models
     to accept in_channels instead of 3.
+
+    If the model is pretrained on RGB and we switch to 1-channel, initialize the new
+    conv by averaging RGB weights (good transfer for spectrograms).
     """
-    # EfficientNet / EfficientNetV2 in torchvision: model.features[0][0] is Conv2d
-    first = model.features[0][0]
-    model.features[0][0] = nn.Conv2d(
+    old = model.features[0][0]
+    new = nn.Conv2d(
         in_channels=in_channels,
-        out_channels=first.out_channels,
-        kernel_size=first.kernel_size,
-        stride=first.stride,
-        padding=first.padding,
+        out_channels=old.out_channels,
+        kernel_size=old.kernel_size,
+        stride=old.stride,
+        padding=old.padding,
         bias=False,
     )
+
+    # Weight transfer if old conv is RGB and new is mono
+    with torch.no_grad():
+        if hasattr(old, "weight") and old.weight is not None and old.weight.shape[1] == 3 and in_channels == 1:
+            new.weight.copy_(old.weight.mean(dim=1, keepdim=True))
+        else:
+            nn.init.kaiming_normal_(new.weight, mode="fan_out", nonlinearity="relu")
+
+    model.features[0][0] = new
     return model
 
 
@@ -579,7 +607,14 @@ def build_efficientnet(model_name: str, num_classes: int, in_channels: int = 1, 
         ctor = getattr(models, name, None)
         if ctor is None:
             raise ValueError(f"torchvision.models has no constructor named '{name}'.")
-        model = ctor(weights=None)
+        
+        # model = ctor(weights=None)
+
+        # Load pretrained weights if available
+        weights_enum = getattr(models, f"{name.upper()}_Weights", None)
+        w = weights_enum.DEFAULT if weights_enum is not None else None
+        model = ctor(weights=w)
+
         model = _replace_first_conv(model, in_channels=in_channels)
 
         # classifier is Sequential(Dropout, Linear)
@@ -596,7 +631,13 @@ def build_efficientnet(model_name: str, num_classes: int, in_channels: int = 1, 
                 f"torchvision.models has no constructor named '{name}'. "
                 "Your torchvision may be too old for EfficientNetV2."
             )
-        model = ctor(weights=None)
+        # model = ctor(weights=None)
+
+        # Load pretrained weights if available
+        weights_enum = getattr(models, f"{name.upper()}_Weights", None)
+        w = weights_enum.DEFAULT if weights_enum is not None else None
+        model = ctor(weights=w)
+
         model = _replace_first_conv(model, in_channels=in_channels)
 
         in_feats = model.classifier[-1].in_features
