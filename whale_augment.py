@@ -1202,7 +1202,7 @@ def main():
         batch_size = 64
 
         if feature == "mel":
-            test_ds = MelDataset(X[idx_te], y_int[idx_te], sr=args.sr, n_mels=64)
+            test_ds = MelDataset(X[idx_te], y_int[idx_te], sr=args.sr, n_mels=64, train=False)
             test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
             in_channels = 1
 
