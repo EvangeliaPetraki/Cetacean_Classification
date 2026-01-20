@@ -779,6 +779,8 @@ def train_one_run(
     weight_decay: float,
     patience: int,
     out_dir: str,
+    class_weights: Optional[torch.Tensor] = None,
+    label_smoothing: float = 0.03,
 ) -> Dict:
     """
     Train a model with early stopping on validation loss.
@@ -786,10 +788,18 @@ def train_one_run(
     Saves learning curves to out_dir/curves.png
     Returns metrics dictionary.
     """
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    # criterion = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     model.to(device)
+
+    cw = None
+    if class_weights is not None:
+        cw = class_weights.to(device)
+
+    criterion = nn.CrossEntropyLoss(weight=cw, label_smoothing=label_smoothing)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs)
 
     best_val_loss = float("inf")
     epochs_no_improve = 0
@@ -864,6 +874,9 @@ def train_one_run(
         if epochs_no_improve >= patience:
             print(f"[Train] Early stop (no val loss improvement for {patience} epochs).", flush=True)
             break
+
+        scheduler.step()
+
 
         # Save raw learning curves (easy to inspect after Slurm finishes)
     with open(os.path.join(out_dir, "history.json"), "w") as f:
