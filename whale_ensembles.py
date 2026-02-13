@@ -388,6 +388,8 @@ class WST1Dataset(Dataset):
 
     def __getitem__(self, idx):
         feat = self.SX1[idx].unsqueeze(0)   # [1, C1, time]
+        feat = torch.log1p(feat)              # optional but often helps
+        feat = (feat - feat.mean()) / (feat.std().clamp_min(1e-6))
         lab = self.y[idx]
         return feat, lab
 
@@ -868,6 +870,7 @@ def train_one_run(
             logits = model(Xb)
             loss = criterion(logits, yb)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
             tr_loss += loss.item() * yb.size(0)
@@ -1031,7 +1034,7 @@ def run_experiment(
     out_dir = os.path.join(out_root, run_id)
     os.makedirs(out_dir, exist_ok=True)
 
-    # metrics_path = os.path.join(out_dir, "metrics.json")
+    metrics_path = os.path.join(out_dir, "metrics_ensemble.json")
 
     # # Resume logic: if metrics exist, assume run is complete and skip.
     # if os.path.exists(metrics_path):
@@ -1159,8 +1162,8 @@ def run_experiment(
 
 
     # Save metrics
-    # with open(metrics_path, "w") as f:
-    #     json.dump(metrics, f, indent=2)
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
 
     print(
         f"[Run] Finished {run_id} | "
@@ -1190,6 +1193,42 @@ def main():
     print(f"[System] Device: {device}", flush=True)
 
     os.makedirs(args.out_root, exist_ok=True)
+
+
+    # Preprocess and cache waveforms once for all runs
+    cache_path = os.path.join(args.cache_dir, f"preproc_sr{args.sr}_T{args.T}_min{args.min_per_class}.pt")
+    X, y_str = load_and_preprocess_dataset(
+        dataset_root=args.data_root,
+        target_sr=args.sr,
+        target_len=args.T,
+        min_per_class=args.min_per_class,
+        cache_path=cache_path,
+    )
+
+    # Encode labels ONCE (fixed mapping)
+    le = LabelEncoder()
+    y_int = torch.tensor(le.fit_transform(y_str), dtype=torch.long)
+    class_names = le.classes_.tolist()
+
+    # Create ONE fixed split and save it (so reruns use identical indices)
+    splits_path = os.path.join(args.out_root, "splits.json")
+    if os.path.exists(splits_path):
+        print(f"[Split] Loading fixed split from {splits_path}", flush=True)
+        with open(splits_path, "r") as f:
+            sp = json.load(f)
+        splits = {
+            "train": np.array(sp["train"], dtype=int),
+            "val":   np.array(sp["val"], dtype=int),
+            "test":  np.array(sp["test"], dtype=int),
+        }
+    else:
+        idx_tr, idx_va, idx_te = make_fixed_split(y_int, seed=42, train_frac=0.70, val_frac=0.15, test_frac=0.15)
+        splits = {"train": idx_tr, "val": idx_va, "test": idx_te}
+        with open(splits_path, "w") as f:
+            json.dump({k: v.tolist() for k, v in splits.items()}, f, indent=2)
+        print(f"[Split] Saved fixed split to {splits_path}", flush=True)
+
+    print(f"[Split] sizes: train={len(splits['train'])}, val={len(splits['val'])}, test={len(splits['test'])}", flush=True)
 
     if args.ensemble_runs.strip():
         run_ids = [s.strip() for s in args.ensemble_runs.split(",") if s.strip()]
@@ -1260,43 +1299,6 @@ def main():
         print("[Ensemble] Saved:", out_path, flush=True)
         print(f"[Ensemble] acc={ens_metrics['test_accuracy']:.4f} macroF1={ens_metrics['test_macro_f1']:.4f}", flush=True)
         return
-
-
-    # Preprocess and cache waveforms once for all runs
-    cache_path = os.path.join(args.cache_dir, f"preproc_sr{args.sr}_T{args.T}_min{args.min_per_class}.pt")
-    X, y_str = load_and_preprocess_dataset(
-        dataset_root=args.data_root,
-        target_sr=args.sr,
-        target_len=args.T,
-        min_per_class=args.min_per_class,
-        cache_path=cache_path,
-    )
-
-    # Encode labels ONCE (fixed mapping)
-    le = LabelEncoder()
-    y_int = torch.tensor(le.fit_transform(y_str), dtype=torch.long)
-    class_names = le.classes_.tolist()
-
-    # Create ONE fixed split and save it (so reruns use identical indices)
-    splits_path = os.path.join(args.out_root, "splits.json")
-    if os.path.exists(splits_path):
-        print(f"[Split] Loading fixed split from {splits_path}", flush=True)
-        with open(splits_path, "r") as f:
-            sp = json.load(f)
-        splits = {
-            "train": np.array(sp["train"], dtype=int),
-            "val":   np.array(sp["val"], dtype=int),
-            "test":  np.array(sp["test"], dtype=int),
-        }
-    else:
-        idx_tr, idx_va, idx_te = make_fixed_split(y_int, seed=42, train_frac=0.70, val_frac=0.15, test_frac=0.15)
-        splits = {"train": idx_tr, "val": idx_va, "test": idx_te}
-        with open(splits_path, "w") as f:
-            json.dump({k: v.tolist() for k, v in splits.items()}, f, indent=2)
-        print(f"[Split] Saved fixed split to {splits_path}", flush=True)
-
-    print(f"[Split] sizes: train={len(splits['train'])}, val={len(splits['val'])}, test={len(splits['test'])}", flush=True)
-
 
     # -----------------------------
     # Define the full experiment grid
