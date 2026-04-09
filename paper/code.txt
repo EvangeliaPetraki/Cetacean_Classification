@@ -305,23 +305,9 @@ class MelDataset(Dataset):
         hop_length: int = 512,
         f_min: float = 0.0,
         f_max: float = None,
-        train: bool = False,
-        max_time_shift_frac: float = 0.10,
-        freq_mask_param: int = 12,
-        time_mask_param: int = 24,
     ):
-
-        # self.X = X
-        # self.y = y
-
         self.X = X
         self.y = y
-        self.train = train
-        self.max_time_shift_frac = max_time_shift_frac
-
-        # SpecAugment (train-only)
-        self.freq_mask = torchaudio.transforms.FrequencyMasking(freq_mask_param=freq_mask_param)
-        self.time_mask = torchaudio.transforms.TimeMasking(time_mask_param=time_mask_param)
 
         if f_max is None:
             f_max = sr / 2.0
@@ -345,14 +331,6 @@ class MelDataset(Dataset):
         wav = self.X[idx].unsqueeze(0)   # [1, T]
         lab = self.y[idx]
 
-        # Train-only random time shift (invariance to call position inside the window)
-        if self.train:
-            T = wav.shape[1]
-            max_shift = int(self.max_time_shift_frac * T)
-            if max_shift > 0:
-                shift = torch.randint(-max_shift, max_shift + 1, (1,)).item()
-                wav = torch.roll(wav, shifts=shift, dims=1)
-
         mel = self.mel(wav)             # [1, n_mels, time]
         mel = self.to_db(mel)           # log-mel
 
@@ -361,13 +339,7 @@ class MelDataset(Dataset):
         std = mel.std().clamp_min(1e-6)
         mel = (mel - mean) / std
 
-        # Train-only SpecAugment (reduces class confusions, improves robustness)
-        if self.train:
-            mel = self.freq_mask(mel)
-            mel = self.time_mask(mel)
-
         return mel, lab
-
 
 
 class WST1Dataset(Dataset):
@@ -388,8 +360,6 @@ class WST1Dataset(Dataset):
 
     def __getitem__(self, idx):
         feat = self.SX1[idx].unsqueeze(0)   # [1, C1, time]
-        feat = torch.log1p(feat)              # optional but often helps
-        feat = (feat - feat.mean()) / (feat.std().clamp_min(1e-6))
         lab = self.y[idx]
         return feat, lab
 
@@ -545,49 +515,21 @@ class ResizeWrapper(nn.Module):
         return self.backbone(x)
 
 
-# def _replace_first_conv(model: nn.Module, in_channels: int = 1):
-#     """
-#     Replace the very first Conv2d layer in torchvision EfficientNet/MobileNet-like models
-#     to accept in_channels instead of 3.
-#     """
-#     # EfficientNet / EfficientNetV2 in torchvision: model.features[0][0] is Conv2d
-#     first = model.features[0][0]
-#     model.features[0][0] = nn.Conv2d(
-#         in_channels=in_channels,
-#         out_channels=first.out_channels,
-#         kernel_size=first.kernel_size,
-#         stride=first.stride,
-#         padding=first.padding,
-#         bias=False,
-#     )
-#     return model
-
 def _replace_first_conv(model: nn.Module, in_channels: int = 1):
     """
     Replace the very first Conv2d layer in torchvision EfficientNet/MobileNet-like models
     to accept in_channels instead of 3.
-
-    If the model is pretrained on RGB and we switch to 1-channel, initialize the new
-    conv by averaging RGB weights (good transfer for spectrograms).
     """
-    old = model.features[0][0]
-    new = nn.Conv2d(
+    # EfficientNet / EfficientNetV2 in torchvision: model.features[0][0] is Conv2d
+    first = model.features[0][0]
+    model.features[0][0] = nn.Conv2d(
         in_channels=in_channels,
-        out_channels=old.out_channels,
-        kernel_size=old.kernel_size,
-        stride=old.stride,
-        padding=old.padding,
+        out_channels=first.out_channels,
+        kernel_size=first.kernel_size,
+        stride=first.stride,
+        padding=first.padding,
         bias=False,
     )
-
-    # Weight transfer if old conv is RGB and new is mono
-    with torch.no_grad():
-        if hasattr(old, "weight") and old.weight is not None and old.weight.shape[1] == 3 and in_channels == 1:
-            new.weight.copy_(old.weight.mean(dim=1, keepdim=True))
-        else:
-            nn.init.kaiming_normal_(new.weight, mode="fan_out", nonlinearity="relu")
-
-    model.features[0][0] = new
     return model
 
 
@@ -609,14 +551,7 @@ def build_efficientnet(model_name: str, num_classes: int, in_channels: int = 1, 
         ctor = getattr(models, name, None)
         if ctor is None:
             raise ValueError(f"torchvision.models has no constructor named '{name}'.")
-        
-        # model = ctor(weights=None)
-
-        # Load pretrained weights if available
-        weights_enum = getattr(models, f"{name.upper()}_Weights", None)
-        w = weights_enum.DEFAULT if weights_enum is not None else None
-        model = ctor(weights=w)
-
+        model = ctor(weights=None)
         model = _replace_first_conv(model, in_channels=in_channels)
 
         # classifier is Sequential(Dropout, Linear)
@@ -633,13 +568,7 @@ def build_efficientnet(model_name: str, num_classes: int, in_channels: int = 1, 
                 f"torchvision.models has no constructor named '{name}'. "
                 "Your torchvision may be too old for EfficientNetV2."
             )
-        # model = ctor(weights=None)
-
-        # Load pretrained weights if available
-        weights_enum = getattr(models, f"{name.upper()}_Weights", None)
-        w = weights_enum.DEFAULT if weights_enum is not None else None
-        model = ctor(weights=w)
-
+        model = ctor(weights=None)
         model = _replace_first_conv(model, in_channels=in_channels)
 
         in_feats = model.classifier[-1].in_features
@@ -686,32 +615,18 @@ def build_mobilenetv3_small(num_classes: int, in_channels: int = 1, resize_to: i
     """
     from torchvision.models import mobilenet_v3_small
 
-        # Load pretrained weights if available
-    try:
-        from torchvision.models import MobileNet_V3_Small_Weights
-        model = mobilenet_v3_small(weights=MobileNet_V3_Small_Weights.DEFAULT)
-    except Exception:
-        model = mobilenet_v3_small(weights=None)
+    model = mobilenet_v3_small(weights=None)
 
     # Replace first conv to accept 1-channel input instead of 3-channel RGB
-    old = model.features[0][0]
-    new = nn.Conv2d(
+    first_conv = model.features[0][0]
+    model.features[0][0] = nn.Conv2d(
         in_channels,
-        old.out_channels,
-        kernel_size=old.kernel_size,
-        stride=old.stride,
-        padding=old.padding,
+        first_conv.out_channels,
+        kernel_size=first_conv.kernel_size,
+        stride=first_conv.stride,
+        padding=first_conv.padding,
         bias=False,
     )
-
-    with torch.no_grad():
-        if hasattr(old, "weight") and old.weight is not None and old.weight.shape[1] == 3 and in_channels == 1:
-            new.weight.copy_(old.weight.mean(dim=1, keepdim=True))
-        else:
-            nn.init.kaiming_normal_(new.weight, mode="fan_out", nonlinearity="relu")
-
-    model.features[0][0] = new
-
 
     # Replace classifier output layer
     in_feats = model.classifier[-1].in_features
@@ -754,25 +669,6 @@ def build_model(model_name: str, num_classes: int, in_channels: int = 1) -> nn.M
 # -----------------------------
 # 5) Training + evaluation
 # -----------------------------
-
-def predict_proba(model, loader, device) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Returns:
-      y_true: [N] int labels
-      proba:  [N, C] float probabilities (softmax)
-    """
-    model.eval()
-    ys = []
-    probs = []
-    with torch.no_grad():
-        for Xb, yb in loader:
-            Xb = Xb.to(device)
-            logits = model(Xb)                 # [B, C]
-            pb = torch.softmax(logits, dim=1)  # [B, C]
-            ys.append(yb.numpy())
-            probs.append(pb.cpu().numpy())
-    return np.concatenate(ys), np.concatenate(probs)
-
 def evaluate(model, loader, device) -> Tuple[np.ndarray, np.ndarray]:
     """
     Run inference on a loader and return:
@@ -789,33 +685,6 @@ def evaluate(model, loader, device) -> Tuple[np.ndarray, np.ndarray]:
             ps.append(pred)
     return np.concatenate(ys), np.concatenate(ps)
 
-def ensemble_predict_proba(models: List[nn.Module], loader, device, weights=None):
-    """
-    Soft-voting ensemble: average (or weighted average) of probs.
-
-    weights: list of floats length M, or None for uniform.
-    """
-    M = len(models)
-    if weights is None:
-        weights = [1.0 / M] * M
-    w = np.array(weights, dtype=np.float64)
-    w = w / w.sum()
-
-    y_true = None
-    P = None
-
-    for i, model in enumerate(models):
-        yt, proba = predict_proba(model, loader, device)
-        if y_true is None:
-            y_true = yt
-            P = w[i] * proba
-        else:
-            # sanity check: same sample order/labels
-            assert np.array_equal(y_true, yt), "Mismatch in loader order between models"
-            P += w[i] * proba
-
-    return y_true, P
-
 
 def train_one_run(
     model: nn.Module,
@@ -827,8 +696,6 @@ def train_one_run(
     weight_decay: float,
     patience: int,
     out_dir: str,
-    class_weights: Optional[torch.Tensor] = None,
-    label_smoothing: float = 0.03,
 ) -> Dict:
     """
     Train a model with early stopping on validation loss.
@@ -836,18 +703,10 @@ def train_one_run(
     Saves learning curves to out_dir/curves.png
     Returns metrics dictionary.
     """
-    # criterion = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     model.to(device)
-
-    cw = None
-    if class_weights is not None:
-        cw = class_weights.to(device)
-
-    criterion = nn.CrossEntropyLoss(weight=cw, label_smoothing=label_smoothing)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs)
 
     best_val_loss = float("inf")
     epochs_no_improve = 0
@@ -870,7 +729,6 @@ def train_one_run(
             logits = model(Xb)
             loss = criterion(logits, yb)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
             tr_loss += loss.item() * yb.size(0)
@@ -923,9 +781,6 @@ def train_one_run(
         if epochs_no_improve >= patience:
             print(f"[Train] Early stop (no val loss improvement for {patience} epochs).", flush=True)
             break
-
-        scheduler.step()
-
 
         # Save raw learning curves (easy to inspect after Slurm finishes)
     with open(os.path.join(out_dir, "history.json"), "w") as f:
@@ -1034,7 +889,7 @@ def run_experiment(
     out_dir = os.path.join(out_root, run_id)
     os.makedirs(out_dir, exist_ok=True)
 
-    metrics_path = os.path.join(out_dir, "metrics_ensemble.json")
+    # metrics_path = os.path.join(out_dir, "metrics.json")
 
     # # Resume logic: if metrics exist, assume run is complete and skip.
     # if os.path.exists(metrics_path):
@@ -1071,11 +926,10 @@ def run_experiment(
     batch_size = 64
 
     if cfg.feature == "mel":
-        train_ds = MelDataset(X[idx_tr], y_int[idx_tr], sr=sr, n_mels=64, train=True)
-        val_ds   = MelDataset(X[idx_va], y_int[idx_va], sr=sr, n_mels=64, train=False)
-        test_ds  = MelDataset(X[idx_te], y_int[idx_te], sr=sr, n_mels=64, train=False)
+        train_ds = MelDataset(X[idx_tr], y_int[idx_tr], sr=sr, n_mels=64)
+        val_ds   = MelDataset(X[idx_va], y_int[idx_va], sr=sr, n_mels=64)
+        test_ds  = MelDataset(X[idx_te], y_int[idx_te], sr=sr, n_mels=64)
         in_channels = 1
-
 
 
     elif cfg.feature == "wst1":
@@ -1162,8 +1016,8 @@ def run_experiment(
 
 
     # Save metrics
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
+    # with open(metrics_path, "w") as f:
+    #     json.dump(metrics, f, indent=2)
 
     print(
         f"[Run] Finished {run_id} | "
@@ -1181,8 +1035,6 @@ def main():
     parser.add_argument("--sr", type=int, default=47600, help="Target sampling rate")
     parser.add_argument("--T", type=int, default=8000, help="Fixed waveform length (samples)")
     parser.add_argument("--min_per_class", type=int, default=50, help="Min samples per class")
-    parser.add_argument("--ensemble_runs", type=str, default="",help="Comma-separated run_ids inside out_root to ensemble. Example: mel__mobilenetv3_small__ep20__seed0,mel__efficientnet_b4__ep20__seed1")
-    parser.add_argument("--ensemble_weights", type=str, default="",help="Optional comma-separated weights same length as ensemble_runs. If empty => uniform.")
     args = parser.parse_args()
 
     print(f"[Paths] out_root = {os.path.abspath(args.out_root)}", flush=True)
@@ -1193,7 +1045,6 @@ def main():
     print(f"[System] Device: {device}", flush=True)
 
     os.makedirs(args.out_root, exist_ok=True)
-
 
     # Preprocess and cache waveforms once for all runs
     cache_path = os.path.join(args.cache_dir, f"preproc_sr{args.sr}_T{args.T}_min{args.min_per_class}.pt")
@@ -1230,75 +1081,6 @@ def main():
 
     print(f"[Split] sizes: train={len(splits['train'])}, val={len(splits['val'])}, test={len(splits['test'])}", flush=True)
 
-    if args.ensemble_runs.strip():
-        run_ids = [s.strip() for s in args.ensemble_runs.split(",") if s.strip()]
-
-        weights = None
-        if args.ensemble_weights.strip():
-            weights = [float(x) for x in args.ensemble_weights.split(",")]
-            assert len(weights) == len(run_ids)
-
-        # We will build ONE loader (usually test_loader or val_loader)
-        # Important: simplest version assumes ALL runs share the SAME feature type.
-        # We'll enforce that below.
-
-        # Load configs, ensure same feature, build loader once
-        cfgs = []
-        for rid in run_ids:
-            run_dir = os.path.join(args.out_root, rid)
-            with open(os.path.join(run_dir, "config.json"), "r") as f:
-                cfgs.append(json.load(f))
-
-        feature = cfgs[0]["feature"]
-        assert all(c["feature"] == feature for c in cfgs), "For now, ensemble_runs must all have the same feature (mel OR wst1)."
-
-        idx_te = splits["test"]
-        batch_size = 64
-
-        if feature == "mel":
-            test_ds = MelDataset(X[idx_te], y_int[idx_te], sr=args.sr, n_mels=64, train=False)
-            test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-            in_channels = 1
-        elif feature == "wst1":
-            # Use (J,Q) from the FIRST run
-            J = cfgs[0].get("wst_J", 8)
-            Q = cfgs[0].get("wst_Q", 14)
-            SX1 = compute_wst_order1(X=X, J=J, Q=Q, device=device, batch_size=512)
-            test_ds = WST1Dataset(SX1[idx_te], y_int[idx_te])
-            test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-            in_channels = 1
-        else:
-            raise ValueError(feature)
-
-        # Load models
-        num_classes = int(y_int.max().item() + 1)
-        models = []
-        for rid, c in zip(run_ids, cfgs):
-            run_dir = os.path.join(args.out_root, rid)
-            model = build_model(c["model"], num_classes=num_classes, in_channels=in_channels).to(device)
-            model.load_state_dict(torch.load(os.path.join(run_dir, "best.pt"), map_location=device))
-            models.append(model)
-
-        # Ensemble predict
-        y_true, P = ensemble_predict_proba(models, test_loader, device, weights=weights)
-        y_pred = P.argmax(axis=1)
-
-        ens_metrics = {
-            "ensemble_runs": run_ids,
-            "weights": weights,
-            "test_accuracy": float(accuracy_score(y_true, y_pred)),
-            "test_macro_f1": float(f1_score(y_true, y_pred, average="macro")),
-            "test_weighted_f1": float(f1_score(y_true, y_pred, average="weighted")),
-            "n_test": int(len(y_true)),
-        }
-
-        out_path = os.path.join(args.out_root, "ensemble_test_metrics.json")
-        with open(out_path, "w") as f:
-            json.dump(ens_metrics, f, indent=2)
-
-        print("[Ensemble] Saved:", out_path, flush=True)
-        print(f"[Ensemble] acc={ens_metrics['test_accuracy']:.4f} macroF1={ens_metrics['test_macro_f1']:.4f}", flush=True)
-        return
 
     # -----------------------------
     # Define the full experiment grid
@@ -1314,15 +1096,15 @@ def main():
 
     # EfficientNet B-family
     "efficientnet_b0",
-    # "efficientnet_b2",
-    # "efficientnet_b4",
+    "efficientnet_b2",
+    "efficientnet_b4",
 
     # EfficientNetV2
-    # "efficientnet_v2_s",
-    # "efficientnet_v2_m",
+    "efficientnet_v2_s",
+    "efficientnet_v2_m",
 ]
 
-    epoch_budgets = [20, 40, 60]   # few vs many (with early stopping)
+    epoch_budgets = [10, 30, 50]   # few vs many (with early stopping)
     seeds = [0, 1, 2]
 
     # Build experiment list
@@ -1377,7 +1159,7 @@ def main():
         batch_size = 64
 
         if feature == "mel":
-            test_ds = MelDataset(X[idx_te], y_int[idx_te], sr=args.sr, n_mels=64, train=False)
+            test_ds = MelDataset(X[idx_te], y_int[idx_te], sr=args.sr, n_mels=64)
             test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
             in_channels = 1
 

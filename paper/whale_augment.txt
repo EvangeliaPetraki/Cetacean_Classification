@@ -388,8 +388,6 @@ class WST1Dataset(Dataset):
 
     def __getitem__(self, idx):
         feat = self.SX1[idx].unsqueeze(0)   # [1, C1, time]
-        feat = torch.log1p(feat)              # optional but often helps
-        feat = (feat - feat.mean()) / (feat.std().clamp_min(1e-6))
         lab = self.y[idx]
         return feat, lab
 
@@ -754,25 +752,6 @@ def build_model(model_name: str, num_classes: int, in_channels: int = 1) -> nn.M
 # -----------------------------
 # 5) Training + evaluation
 # -----------------------------
-
-def predict_proba(model, loader, device) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Returns:
-      y_true: [N] int labels
-      proba:  [N, C] float probabilities (softmax)
-    """
-    model.eval()
-    ys = []
-    probs = []
-    with torch.no_grad():
-        for Xb, yb in loader:
-            Xb = Xb.to(device)
-            logits = model(Xb)                 # [B, C]
-            pb = torch.softmax(logits, dim=1)  # [B, C]
-            ys.append(yb.numpy())
-            probs.append(pb.cpu().numpy())
-    return np.concatenate(ys), np.concatenate(probs)
-
 def evaluate(model, loader, device) -> Tuple[np.ndarray, np.ndarray]:
     """
     Run inference on a loader and return:
@@ -788,33 +767,6 @@ def evaluate(model, loader, device) -> Tuple[np.ndarray, np.ndarray]:
             ys.append(yb.numpy())
             ps.append(pred)
     return np.concatenate(ys), np.concatenate(ps)
-
-def ensemble_predict_proba(models: List[nn.Module], loader, device, weights=None):
-    """
-    Soft-voting ensemble: average (or weighted average) of probs.
-
-    weights: list of floats length M, or None for uniform.
-    """
-    M = len(models)
-    if weights is None:
-        weights = [1.0 / M] * M
-    w = np.array(weights, dtype=np.float64)
-    w = w / w.sum()
-
-    y_true = None
-    P = None
-
-    for i, model in enumerate(models):
-        yt, proba = predict_proba(model, loader, device)
-        if y_true is None:
-            y_true = yt
-            P = w[i] * proba
-        else:
-            # sanity check: same sample order/labels
-            assert np.array_equal(y_true, yt), "Mismatch in loader order between models"
-            P += w[i] * proba
-
-    return y_true, P
 
 
 def train_one_run(
@@ -870,7 +822,6 @@ def train_one_run(
             logits = model(Xb)
             loss = criterion(logits, yb)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
             tr_loss += loss.item() * yb.size(0)
@@ -1034,7 +985,7 @@ def run_experiment(
     out_dir = os.path.join(out_root, run_id)
     os.makedirs(out_dir, exist_ok=True)
 
-    metrics_path = os.path.join(out_dir, "metrics_ensemble.json")
+    # metrics_path = os.path.join(out_dir, "metrics.json")
 
     # # Resume logic: if metrics exist, assume run is complete and skip.
     # if os.path.exists(metrics_path):
@@ -1162,8 +1113,8 @@ def run_experiment(
 
 
     # Save metrics
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
+    # with open(metrics_path, "w") as f:
+    #     json.dump(metrics, f, indent=2)
 
     print(
         f"[Run] Finished {run_id} | "
@@ -1181,8 +1132,6 @@ def main():
     parser.add_argument("--sr", type=int, default=47600, help="Target sampling rate")
     parser.add_argument("--T", type=int, default=8000, help="Fixed waveform length (samples)")
     parser.add_argument("--min_per_class", type=int, default=50, help="Min samples per class")
-    parser.add_argument("--ensemble_runs", type=str, default="",help="Comma-separated run_ids inside out_root to ensemble. Example: mel__mobilenetv3_small__ep20__seed0,mel__efficientnet_b4__ep20__seed1")
-    parser.add_argument("--ensemble_weights", type=str, default="",help="Optional comma-separated weights same length as ensemble_runs. If empty => uniform.")
     args = parser.parse_args()
 
     print(f"[Paths] out_root = {os.path.abspath(args.out_root)}", flush=True)
@@ -1193,7 +1142,6 @@ def main():
     print(f"[System] Device: {device}", flush=True)
 
     os.makedirs(args.out_root, exist_ok=True)
-
 
     # Preprocess and cache waveforms once for all runs
     cache_path = os.path.join(args.cache_dir, f"preproc_sr{args.sr}_T{args.T}_min{args.min_per_class}.pt")
@@ -1230,75 +1178,6 @@ def main():
 
     print(f"[Split] sizes: train={len(splits['train'])}, val={len(splits['val'])}, test={len(splits['test'])}", flush=True)
 
-    if args.ensemble_runs.strip():
-        run_ids = [s.strip() for s in args.ensemble_runs.split(",") if s.strip()]
-
-        weights = None
-        if args.ensemble_weights.strip():
-            weights = [float(x) for x in args.ensemble_weights.split(",")]
-            assert len(weights) == len(run_ids)
-
-        # We will build ONE loader (usually test_loader or val_loader)
-        # Important: simplest version assumes ALL runs share the SAME feature type.
-        # We'll enforce that below.
-
-        # Load configs, ensure same feature, build loader once
-        cfgs = []
-        for rid in run_ids:
-            run_dir = os.path.join(args.out_root, rid)
-            with open(os.path.join(run_dir, "config.json"), "r") as f:
-                cfgs.append(json.load(f))
-
-        feature = cfgs[0]["feature"]
-        assert all(c["feature"] == feature for c in cfgs), "For now, ensemble_runs must all have the same feature (mel OR wst1)."
-
-        idx_te = splits["test"]
-        batch_size = 64
-
-        if feature == "mel":
-            test_ds = MelDataset(X[idx_te], y_int[idx_te], sr=args.sr, n_mels=64, train=False)
-            test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-            in_channels = 1
-        elif feature == "wst1":
-            # Use (J,Q) from the FIRST run
-            J = cfgs[0].get("wst_J", 8)
-            Q = cfgs[0].get("wst_Q", 14)
-            SX1 = compute_wst_order1(X=X, J=J, Q=Q, device=device, batch_size=512)
-            test_ds = WST1Dataset(SX1[idx_te], y_int[idx_te])
-            test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-            in_channels = 1
-        else:
-            raise ValueError(feature)
-
-        # Load models
-        num_classes = int(y_int.max().item() + 1)
-        models = []
-        for rid, c in zip(run_ids, cfgs):
-            run_dir = os.path.join(args.out_root, rid)
-            model = build_model(c["model"], num_classes=num_classes, in_channels=in_channels).to(device)
-            model.load_state_dict(torch.load(os.path.join(run_dir, "best.pt"), map_location=device))
-            models.append(model)
-
-        # Ensemble predict
-        y_true, P = ensemble_predict_proba(models, test_loader, device, weights=weights)
-        y_pred = P.argmax(axis=1)
-
-        ens_metrics = {
-            "ensemble_runs": run_ids,
-            "weights": weights,
-            "test_accuracy": float(accuracy_score(y_true, y_pred)),
-            "test_macro_f1": float(f1_score(y_true, y_pred, average="macro")),
-            "test_weighted_f1": float(f1_score(y_true, y_pred, average="weighted")),
-            "n_test": int(len(y_true)),
-        }
-
-        out_path = os.path.join(args.out_root, "ensemble_test_metrics.json")
-        with open(out_path, "w") as f:
-            json.dump(ens_metrics, f, indent=2)
-
-        print("[Ensemble] Saved:", out_path, flush=True)
-        print(f"[Ensemble] acc={ens_metrics['test_accuracy']:.4f} macroF1={ens_metrics['test_macro_f1']:.4f}", flush=True)
-        return
 
     # -----------------------------
     # Define the full experiment grid
@@ -1314,12 +1193,12 @@ def main():
 
     # EfficientNet B-family
     "efficientnet_b0",
-    # "efficientnet_b2",
-    # "efficientnet_b4",
+    "efficientnet_b2",
+    "efficientnet_b4",
 
     # EfficientNetV2
-    # "efficientnet_v2_s",
-    # "efficientnet_v2_m",
+    "efficientnet_v2_s",
+    "efficientnet_v2_m",
 ]
 
     epoch_budgets = [20, 40, 60]   # few vs many (with early stopping)
