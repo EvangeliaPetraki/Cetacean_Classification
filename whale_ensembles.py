@@ -264,36 +264,6 @@ def make_fixed_split(y_int: torch.Tensor, seed: int = 42,
 
     return idx_tr, idx_va, idx_te
 
-
-
-# -----------------------------
-# 3) Feature datasets
-# -----------------------------
-# class MelDataset(Dataset):
-#     """
-#     Returns Mel spectrogram images for CNNs:
-#       waveform [T] -> mel [1, n_mels, time]
-#     """
-
-#     def __init__(self, X: torch.Tensor, y: torch.Tensor, sr: int, n_mels: int = 64):
-#         self.X = X
-#         self.y = y
-#         self.mel = torchaudio.transforms.MelSpectrogram(
-#             sample_rate=sr, n_mels=n_mels, normalized=True
-#         )
-
-#     def __len__(self):
-#         return len(self.X)
-
-#     def __getitem__(self, idx):
-#         wav = self.X[idx].unsqueeze(0)       # [1, T]
-#         lab = self.y[idx]                   # int
-#         mel = self.mel(wav)
-#         if mel.dim() == 2:
-#             mel = mel.unsqueeze(0)
-#         # mel = mel.unsqueeze(0)              # [1, n_mels, time]
-#         return mel, lab
-
 class MelDataset(Dataset):
     def __init__(
         self,
