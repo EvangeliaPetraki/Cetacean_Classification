@@ -27,7 +27,6 @@ import json
 import time
 import math
 import random
-import hashlib
 import argparse
 from dataclasses import dataclass
 from typing import Dict, Tuple, List, Optional
@@ -264,6 +263,36 @@ def make_fixed_split(y_int: torch.Tensor, seed: int = 42,
     )
 
     return idx_tr, idx_va, idx_te
+
+
+
+# -----------------------------
+# 3) Feature datasets
+# -----------------------------
+# class MelDataset(Dataset):
+#     """
+#     Returns Mel spectrogram images for CNNs:
+#       waveform [T] -> mel [1, n_mels, time]
+#     """
+
+#     def __init__(self, X: torch.Tensor, y: torch.Tensor, sr: int, n_mels: int = 64):
+#         self.X = X
+#         self.y = y
+#         self.mel = torchaudio.transforms.MelSpectrogram(
+#             sample_rate=sr, n_mels=n_mels, normalized=True
+#         )
+
+#     def __len__(self):
+#         return len(self.X)
+
+#     def __getitem__(self, idx):
+#         wav = self.X[idx].unsqueeze(0)       # [1, T]
+#         lab = self.y[idx]                   # int
+#         mel = self.mel(wav)
+#         if mel.dim() == 2:
+#             mel = mel.unsqueeze(0)
+#         # mel = mel.unsqueeze(0)              # [1, n_mels, time]
+#         return mel, lab
 
 class MelDataset(Dataset):
     def __init__(
@@ -788,236 +817,6 @@ def ensemble_predict_proba(models: List[nn.Module], loader, device, weights=None
     return y_true, P
 
 
-def _sync_if_cuda(device: torch.device):
-    """Ensure CUDA timings include all queued kernels."""
-    if device.type == "cuda":
-        torch.cuda.synchronize(device)
-
-
-def measure_single_model_inference(
-    model: nn.Module,
-    loader: DataLoader,
-    device: torch.device,
-) -> Tuple[np.ndarray, np.ndarray, float]:
-    """
-    Run inference once and measure total wall-clock time.
-
-    Returns:
-      y_true, y_pred, elapsed_sec
-    """
-    model.eval()
-    y_true, y_pred = [], []
-
-    _sync_if_cuda(device)
-    start = time.perf_counter()
-
-    with torch.no_grad():
-        for Xb, yb in loader:
-            Xb = Xb.to(device)
-            logits = model(Xb)
-            pred = logits.argmax(dim=1).cpu().numpy()
-
-            y_pred.extend(pred.tolist())
-            y_true.extend(yb.numpy().tolist())
-
-    _sync_if_cuda(device)
-    elapsed_sec = time.perf_counter() - start
-    return np.array(y_true), np.array(y_pred), float(elapsed_sec)
-
-
-def measure_ensemble_inference(
-    models: List[nn.Module],
-    loader: DataLoader,
-    device: torch.device,
-    weights=None,
-) -> Tuple[np.ndarray, np.ndarray, float]:
-    """
-    Run ensemble inference once and measure total wall-clock time.
-
-    Returns:
-      y_true, proba, elapsed_sec
-    """
-    _sync_if_cuda(device)
-    start = time.perf_counter()
-    y_true, proba = ensemble_predict_proba(models, loader, device, weights=weights)
-    _sync_if_cuda(device)
-    elapsed_sec = time.perf_counter() - start
-    return y_true, proba, float(elapsed_sec)
-
-
-def count_model_parameters(model: nn.Module) -> int:
-    """Count all learnable and frozen parameters in the model."""
-    return int(sum(p.numel() for p in model.parameters()))
-
-
-def save_records_table(records: List[Dict], csv_path: str, json_path: str):
-    """Write both CSV and JSON summaries for a list of records."""
-    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-
-    with open(json_path, "w") as f:
-        json.dump(records, f, indent=2)
-
-    if not records:
-        pd.DataFrame().to_csv(csv_path, index=False)
-        return
-
-    rows = []
-    for rec in records:
-        row = {}
-        for key, value in rec.items():
-            if isinstance(value, (list, dict)):
-                row[key] = json.dumps(value)
-            else:
-                row[key] = value
-        rows.append(row)
-
-    pd.DataFrame(rows).to_csv(csv_path, index=False)
-
-
-def save_per_class_metrics(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-    class_names: List[str],
-    out_json_path: str,
-    out_csv_path: str,
-) -> Dict:
-    """
-    Save per-class metrics plus aggregate metrics for one evaluation split.
-    """
-    report = classification_report(
-        y_true,
-        y_pred,
-        target_names=class_names,
-        digits=4,
-        output_dict=True,
-        zero_division=0,
-    )
-
-    per_class_rows = []
-    for class_name in class_names:
-        row = report[class_name]
-        per_class_rows.append({
-            "class_name": class_name,
-            "precision": float(row["precision"]),
-            "recall": float(row["recall"]),
-            "f1": float(row["f1-score"]),
-            "support": int(row["support"]),
-        })
-
-    payload = {
-        "per_class": per_class_rows,
-        "accuracy": float(report["accuracy"]),
-        "macro_f1": float(report["macro avg"]["f1-score"]),
-        "weighted_f1": float(report["weighted avg"]["f1-score"]),
-        "macro_precision": float(report["macro avg"]["precision"]),
-        "macro_recall": float(report["macro avg"]["recall"]),
-        "weighted_precision": float(report["weighted avg"]["precision"]),
-        "weighted_recall": float(report["weighted avg"]["recall"]),
-        "support": int(sum(row["support"] for row in per_class_rows)),
-    }
-
-    with open(out_json_path, "w") as f:
-        json.dump(payload, f, indent=2)
-
-    pd.DataFrame(per_class_rows).to_csv(out_csv_path, index=False)
-    return payload
-
-
-def build_confusion_payload(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-    class_names: List[str],
-) -> Dict:
-    """Build a confusion matrix payload for embedding in summary records."""
-    cm = confusion_matrix(y_true, y_pred)
-    return {
-        "labels": class_names,
-        "matrix": cm.tolist(),
-    }
-
-
-def collect_run_records(out_root: str) -> List[Dict]:
-    """Collect per-run metrics from all completed run directories."""
-    records = []
-    for d in sorted(os.listdir(out_root)):
-        run_dir = os.path.join(out_root, d)
-        if not os.path.isdir(run_dir):
-            continue
-
-        candidate_paths = [
-            os.path.join(run_dir, "metrics.json"),
-            os.path.join(run_dir, "metrics_ensemble.json"),
-        ]
-        metrics_path = next((p for p in candidate_paths if os.path.exists(p)), None)
-        if metrics_path is None:
-            continue
-
-        with open(metrics_path, "r") as f:
-            metrics = json.load(f)
-        records.append(metrics)
-
-    return records
-
-
-def collect_ensemble_records(out_root: str) -> List[Dict]:
-    """Collect per-ensemble records saved under out_root/ensemble_runs."""
-    ens_dir = os.path.join(out_root, "ensemble_runs")
-    if not os.path.exists(ens_dir):
-        return []
-
-    records = []
-    for fname in sorted(os.listdir(ens_dir)):
-        if not fname.endswith(".json"):
-            continue
-        with open(os.path.join(ens_dir, fname), "r") as f:
-            records.append(json.load(f))
-    return records
-
-
-def build_seed_averaged_run_records(run_records: List[Dict]) -> List[Dict]:
-    """
-    Aggregate single-run records across seeds for the same experiment setup.
-    """
-    if not run_records:
-        return []
-
-    df = pd.DataFrame(run_records)
-    group_cols = ["feature_type", "input_length", "model", "epochs_planned"]
-    value_cols = [
-        "epochs_ran",
-        "best_val_loss",
-        "val_accuracy",
-        "val_macro_f1",
-        "val_weighted_f1",
-        "test_accuracy",
-        "test_macro_f1",
-        "test_weighted_f1",
-        "runtime_sec",
-        "params",
-        "inference_time_sec",
-        "inference_time_ms_per_sample",
-    ]
-
-    records = []
-    grouped = df.groupby(group_cols, dropna=False, sort=True)
-    for keys, g in grouped:
-        row = {col: g.iloc[0][col] for col in group_cols}
-        row["seeds"] = sorted(int(s) for s in g["seed"].tolist())
-        row["n_seeds"] = int(len(g))
-        row["run_ids"] = g["run_id"].tolist()
-
-        for col in value_cols:
-            vals = pd.to_numeric(g[col], errors="coerce").dropna()
-            if len(vals) == 0:
-                continue
-            row[f"{col}_mean"] = float(vals.mean())
-            row[f"{col}_std"] = float(vals.std(ddof=0))
-
-        records.append(row)
-
-    return records
-
-
 def train_one_run(
     model: nn.Module,
     train_loader: DataLoader,
@@ -1028,7 +827,6 @@ def train_one_run(
     weight_decay: float,
     patience: int,
     out_dir: str,
-    class_names: List[str],
     class_weights: Optional[torch.Tensor] = None,
     label_smoothing: float = 0.03,
 ) -> Dict:
@@ -1187,25 +985,10 @@ def train_one_run(
     plt.savefig(os.path.join(out_dir, "confusion.png"), dpi=200)
     plt.close()
 
-    val_confusion = build_confusion_payload(y_true, y_pred, class_names)
-
     # Save text report
     report = classification_report(y_true, y_pred, digits=4)
     with open(os.path.join(out_dir, "classification_report.txt"), "w") as f:
         f.write(report)
-
-    val_per_class = save_per_class_metrics(
-        y_true,
-        y_pred,
-        class_names,
-        os.path.join(out_dir, "per_class_metrics_val.json"),
-        os.path.join(out_dir, "per_class_metrics_val.csv"),
-    )
-    metrics["val_per_class_metrics_path"] = "per_class_metrics_val.json"
-    metrics["val_confusion_matrix"] = val_confusion["matrix"]
-    metrics["val_accuracy"] = float(val_per_class["accuracy"])
-    metrics["val_macro_f1"] = float(val_per_class["macro_f1"])
-    metrics["val_weighted_f1"] = float(val_per_class["weighted_f1"])
 
     # Save learning history
     with open(os.path.join(out_dir, "history.json"), "w") as f:
@@ -1238,7 +1021,6 @@ def run_experiment(
     class_names: List[str],
     splits: Dict[str, np.ndarray],
     sr: int,
-    input_length: int,
     out_root: str,
     device: torch.device,
 ):
@@ -1252,7 +1034,7 @@ def run_experiment(
     out_dir = os.path.join(out_root, run_id)
     os.makedirs(out_dir, exist_ok=True)
 
-    metrics_path = os.path.join(out_dir, "metrics.json")
+    metrics_path = os.path.join(out_dir, "metrics_ensemble.json")
 
     # # Resume logic: if metrics exist, assume run is complete and skip.
     # if os.path.exists(metrics_path):
@@ -1322,11 +1104,10 @@ def run_experiment(
 
     # Build model
     model = build_model(cfg.model, num_classes=num_classes, in_channels=in_channels)
-    num_params = count_model_parameters(model)
 
     # Save config for reproducibility
     with open(os.path.join(out_dir, "config.json"), "w") as f:
-        json.dump({**cfg.__dict__, "input_length": input_length, "sr": sr}, f, indent=2)
+        json.dump(cfg.__dict__, f, indent=2)
 
     # Train + evaluate
     start = time.time()
@@ -1340,12 +1121,11 @@ def run_experiment(
         weight_decay=cfg.weight_decay,
         patience=cfg.patience,
         out_dir=out_dir,
-        class_names=class_names,
     )
     
 
     # At this point train_one_run() has already loaded best.pt back into `model`
-    y_true_te, y_pred_te, inference_time_sec = measure_single_model_inference(model, test_loader, device)
+    y_true_te, y_pred_te = evaluate(model, test_loader, device)
 
     metrics.update({
         "test_accuracy": float(accuracy_score(y_true_te, y_pred_te)),
@@ -1365,24 +1145,9 @@ def run_experiment(
     plt.savefig(os.path.join(out_dir, "confusion_test.png"), dpi=200)
     plt.close()
 
-    test_confusion = build_confusion_payload(y_true_te, y_pred_te, class_names)
-
     report_te = classification_report(y_true_te, y_pred_te, digits=4)
     with open(os.path.join(out_dir, "classification_report_test.txt"), "w") as f:
         f.write(report_te)
-
-    test_per_class = save_per_class_metrics(
-        y_true_te,
-        y_pred_te,
-        class_names,
-        os.path.join(out_dir, "per_class_metrics_test.json"),
-        os.path.join(out_dir, "per_class_metrics_test.csv"),
-    )
-    metrics["test_per_class_metrics_path"] = "per_class_metrics_test.json"
-    metrics["test_confusion_matrix"] = test_confusion["matrix"]
-    metrics["test_accuracy"] = float(test_per_class["accuracy"])
-    metrics["test_macro_f1"] = float(test_per_class["macro_f1"])
-    metrics["test_weighted_f1"] = float(test_per_class["weighted_f1"])
 
     print(
         f"[Test] {run_id} | acc={metrics['test_accuracy']:.4f} "
@@ -1393,15 +1158,6 @@ def run_experiment(
     metrics["runtime_sec"] = float(time.time() - start)
     metrics["num_classes"] = int(num_classes)
     metrics["classes"] = class_names
-    metrics["run_id"] = run_id
-    metrics["feature_type"] = cfg.feature
-    metrics["input_length"] = int(input_length)
-    metrics["model"] = cfg.model
-    metrics["seed"] = int(cfg.seed)
-    metrics["epochs_planned"] = int(cfg.epochs)
-    metrics["params"] = int(num_params)
-    metrics["inference_time_sec"] = float(inference_time_sec)
-    metrics["inference_time_ms_per_sample"] = float(1000.0 * inference_time_sec / max(1, len(y_true_te)))
 
 
 
@@ -1523,89 +1279,22 @@ def main():
             model.load_state_dict(torch.load(os.path.join(run_dir, "best.pt"), map_location=device))
             models.append(model)
 
-        # Build validation loader too so ensemble summaries include val/test metrics.
-        idx_va = splits["val"]
-        if feature == "mel":
-            val_ds = MelDataset(X[idx_va], y_int[idx_va], sr=args.sr, n_mels=64, train=False)
-            val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-        elif feature == "wst1":
-            val_ds = WST1Dataset(SX1[idx_va], y_int[idx_va])
-            val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
-        else:
-            raise ValueError(feature)
-
-        # Ensemble predict on validation and test.
-        y_true_val, P_val, val_inference_time_sec = measure_ensemble_inference(models, val_loader, device, weights=weights)
-        y_pred_val = P_val.argmax(axis=1)
-
-        y_true, P, test_inference_time_sec = measure_ensemble_inference(models, test_loader, device, weights=weights)
+        # Ensemble predict
+        y_true, P = ensemble_predict_proba(models, test_loader, device, weights=weights)
         y_pred = P.argmax(axis=1)
 
-        ensemble_feature_types = [c["feature"] for c in cfgs]
-        ensemble_input_lengths = [int(c.get("input_length", args.T)) for c in cfgs]
-        ensemble_id_src = "|".join(run_ids) + "|" + ",".join(map(str, weights or []))
-        ensemble_id = hashlib.sha1(ensemble_id_src.encode("utf-8")).hexdigest()[:12]
-        ens_dir = os.path.join(args.out_root, "ensemble_runs")
-        os.makedirs(ens_dir, exist_ok=True)
-
         ens_metrics = {
-            "ensemble_id": ensemble_id,
-            "ensemble_members": run_ids,
+            "ensemble_runs": run_ids,
             "weights": weights,
-            "feature_types": ensemble_feature_types,
-            "input_lengths": ensemble_input_lengths,
-            "ensemble_size": int(len(run_ids)),
-            "val_accuracy": float(accuracy_score(y_true_val, y_pred_val)),
-            "val_macro_f1": float(f1_score(y_true_val, y_pred_val, average="macro")),
-            "val_weighted_f1": float(f1_score(y_true_val, y_pred_val, average="weighted")),
-            "n_val": int(len(y_true_val)),
             "test_accuracy": float(accuracy_score(y_true, y_pred)),
             "test_macro_f1": float(f1_score(y_true, y_pred, average="macro")),
             "test_weighted_f1": float(f1_score(y_true, y_pred, average="weighted")),
             "n_test": int(len(y_true)),
-            "val_inference_time_sec": float(val_inference_time_sec),
-            "val_inference_time_ms_per_sample": float(1000.0 * val_inference_time_sec / max(1, len(y_true_val))),
-            "test_inference_time_sec": float(test_inference_time_sec),
-            "test_inference_time_ms_per_sample": float(1000.0 * test_inference_time_sec / max(1, len(y_true))),
         }
 
-        val_per_class = save_per_class_metrics(
-            y_true_val,
-            y_pred_val,
-            class_names,
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_val.json"),
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_val.csv"),
-        )
-        val_confusion = build_confusion_payload(y_true_val, y_pred_val, class_names)
-        test_per_class = save_per_class_metrics(
-            y_true,
-            y_pred,
-            class_names,
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_test.json"),
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_test.csv"),
-        )
-        test_confusion = build_confusion_payload(y_true, y_pred, class_names)
-
-        ens_metrics["val_per_class_metrics_path"] = f"{ensemble_id}_per_class_val.json"
-        ens_metrics["test_per_class_metrics_path"] = f"{ensemble_id}_per_class_test.json"
-        ens_metrics["val_confusion_matrix"] = val_confusion["matrix"]
-        ens_metrics["test_confusion_matrix"] = test_confusion["matrix"]
-        ens_metrics["val_accuracy"] = float(val_per_class["accuracy"])
-        ens_metrics["val_macro_f1"] = float(val_per_class["macro_f1"])
-        ens_metrics["val_weighted_f1"] = float(val_per_class["weighted_f1"])
-        ens_metrics["test_accuracy"] = float(test_per_class["accuracy"])
-        ens_metrics["test_macro_f1"] = float(test_per_class["macro_f1"])
-        ens_metrics["test_weighted_f1"] = float(test_per_class["weighted_f1"])
-
-        out_path = os.path.join(ens_dir, f"{ensemble_id}.json")
+        out_path = os.path.join(args.out_root, "ensemble_test_metrics.json")
         with open(out_path, "w") as f:
             json.dump(ens_metrics, f, indent=2)
-
-        save_records_table(
-            collect_ensemble_records(args.out_root),
-            os.path.join(args.out_root, "ensemble_summary.csv"),
-            os.path.join(args.out_root, "ensemble_summary.json"),
-        )
 
         print("[Ensemble] Saved:", out_path, flush=True)
         print(f"[Ensemble] acc={ens_metrics['test_accuracy']:.4f} macroF1={ens_metrics['test_macro_f1']:.4f}", flush=True)
@@ -1625,12 +1314,12 @@ def main():
 
     # EfficientNet B-family
     "efficientnet_b0",
-    # "efficientnet_b2",
-    # "efficientnet_b4",
+    "efficientnet_b2",
+    "efficientnet_b4",
 
     # EfficientNetV2
-    # "efficientnet_v2_s",
-    # "efficientnet_v2_m",
+    "efficientnet_v2_s",
+    "efficientnet_v2_m",
 ]
 
     epoch_budgets = [20, 40, 60]   # few vs many (with early stopping)
@@ -1648,48 +1337,23 @@ def main():
 
     # Run sequentially
     for cfg in experiments:
-        run_experiment(
-            cfg,
-            X,
-            y_str,
-            y_int,
-            class_names,
-            splits,
-            sr=args.sr,
-            input_length=args.T,
-            out_root=args.out_root,
-            device=device,
-        )
+        run_experiment(cfg, X, y_str, y_int, class_names, splits, sr=args.sr, out_root=args.out_root, device=device)
 
-    # After all runs, summarize into CSV/JSON files for downstream analysis.
-    run_records = collect_run_records(args.out_root)
-    save_records_table(
-        run_records,
-        os.path.join(args.out_root, "summary_runs.csv"),
-        os.path.join(args.out_root, "summary_runs.json"),
-    )
-    print(f"[Done] Wrote run summaries to {os.path.join(args.out_root, 'summary_runs.csv')}", flush=True)
+    # After all runs, summarize into a CSV for your paper
+    rows = []
+    for d in os.listdir(args.out_root):
+        mpath = os.path.join(args.out_root, d, "metrics.json")
+        cpath = os.path.join(args.out_root, d, "config.json")
+        if os.path.exists(mpath) and os.path.exists(cpath):
+            with open(mpath, "r") as f:
+                m = json.load(f)
+            with open(cpath, "r") as f:
+                c = json.load(f)
+            rows.append({**c, **m, "run_id": d})
 
-    seed_avg_records = build_seed_averaged_run_records(run_records)
-    save_records_table(
-        seed_avg_records,
-        os.path.join(args.out_root, "summary_runs_across_seeds.csv"),
-        os.path.join(args.out_root, "summary_runs_across_seeds.json"),
-    )
-    print(
-        f"[Done] Wrote across-seed summaries to {os.path.join(args.out_root, 'summary_runs_across_seeds.csv')}",
-        flush=True,
-    )
-
-    ensemble_records = collect_ensemble_records(args.out_root)
-    save_records_table(
-        ensemble_records,
-        os.path.join(args.out_root, "ensemble_summary.csv"),
-        os.path.join(args.out_root, "ensemble_summary.json"),
-    )
-    print(f"[Done] Wrote ensemble summaries to {os.path.join(args.out_root, 'ensemble_summary.csv')}", flush=True)
-
-    df = pd.DataFrame(run_records)
+    df = pd.DataFrame(rows)
+    df.to_csv(os.path.join(args.out_root, "summary_results.csv"), index=False)
+    print(f"[Done] Wrote summary CSV to {os.path.join(args.out_root, 'summary_results.csv')}", flush=True)
     # -----------------------------
     # Final: evaluate ONE best model on the held-out TEST set
     # -----------------------------
