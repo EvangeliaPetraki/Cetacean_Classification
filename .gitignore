@@ -11,7 +11,8 @@ venv/
 
 # Data files (don’t track large datasets)
 data/*
-!data/.gitkeep
+literature/
+paper/
 
 # Model checkpoints
 *.pt
