@@ -936,6 +936,44 @@ def build_confusion_payload(
     }
 
 
+def save_confusion_figure(
+    cm: np.ndarray,
+    class_names: List[str],
+    out_path: str,
+    title: str,
+):
+    """
+    Save a confusion matrix figure with class labels and per-cell counts.
+    """
+    plt.figure(figsize=(max(6, len(class_names) * 0.75), max(5, len(class_names) * 0.6)))
+    plt.imshow(cm, interpolation="nearest", cmap="Blues")
+    plt.title(title)
+    plt.colorbar(fraction=0.046, pad=0.04)
+
+    ticks = np.arange(len(class_names))
+    plt.xticks(ticks, class_names, rotation=45, ha="right")
+    plt.yticks(ticks, class_names)
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+
+    thresh = cm.max() / 2.0 if cm.size > 0 else 0.0
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            plt.text(
+                j,
+                i,
+                str(int(cm[i, j])),
+                ha="center",
+                va="center",
+                color="white" if cm[i, j] > thresh else "black",
+                fontsize=8,
+            )
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=200)
+    plt.close()
+
+
 def collect_run_records(out_root: str) -> List[Dict]:
     """Collect per-run metrics from all completed run directories."""
     records = []
@@ -966,11 +1004,12 @@ def collect_ensemble_records(out_root: str) -> List[Dict]:
         return []
 
     records = []
-    for fname in sorted(os.listdir(ens_dir)):
-        if not fname.endswith(".json"):
-            continue
-        with open(os.path.join(ens_dir, fname), "r") as f:
-            records.append(json.load(f))
+    for root, _, files in os.walk(ens_dir):
+        for fname in sorted(files):
+            if fname != "ensemble_metrics.json":
+                continue
+            with open(os.path.join(root, fname), "r") as f:
+                records.append(json.load(f))
     return records
 
 
@@ -1016,6 +1055,22 @@ def build_seed_averaged_run_records(run_records: List[Dict]) -> List[Dict]:
         records.append(row)
 
     return records
+
+
+def make_ensemble_dirname(run_ids: List[str], weights=None) -> str:
+    """
+    Build a readable folder name from ensemble member run IDs.
+    """
+    safe_members = []
+    for rid in run_ids:
+        safe = "".join(ch if ch.isalnum() or ch in {"_", "-", "."} else "_" for ch in rid)
+        safe_members.append(safe)
+
+    name = "__PLUS__".join(safe_members)
+    if weights is not None:
+        weight_tag = "_".join(f"{float(w):g}" for w in weights)
+        name = f"{name}__W__{weight_tag}"
+    return name[:180]
 
 
 def train_one_run(
@@ -1178,14 +1233,7 @@ def train_one_run(
 
     # Confusion matrix
     cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(6, 5))
-    plt.imshow(cm)
-    plt.title("Confusion matrix")
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "confusion.png"), dpi=200)
-    plt.close()
+    save_confusion_figure(cm, class_names, os.path.join(out_dir, "confusion.png"), "Validation confusion matrix")
 
     val_confusion = build_confusion_payload(y_true, y_pred, class_names)
 
@@ -1356,14 +1404,7 @@ def run_experiment(
 
     # Optional: save test confusion + report
     cm_te = confusion_matrix(y_true_te, y_pred_te)
-    plt.figure(figsize=(6, 5))
-    plt.imshow(cm_te)
-    plt.title("TEST confusion matrix")
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "confusion_test.png"), dpi=200)
-    plt.close()
+    save_confusion_figure(cm_te, class_names, os.path.join(out_dir, "confusion_test.png"), "Test confusion matrix")
 
     test_confusion = build_confusion_payload(y_true_te, y_pred_te, class_names)
 
@@ -1545,8 +1586,10 @@ def main():
         ensemble_input_lengths = [int(c.get("input_length", args.T)) for c in cfgs]
         ensemble_id_src = "|".join(run_ids) + "|" + ",".join(map(str, weights or []))
         ensemble_id = hashlib.sha1(ensemble_id_src.encode("utf-8")).hexdigest()[:12]
-        ens_dir = os.path.join(args.out_root, "ensemble_runs")
-        os.makedirs(ens_dir, exist_ok=True)
+        ens_root = os.path.join(args.out_root, "ensemble_runs")
+        os.makedirs(ens_root, exist_ok=True)
+        ensemble_dir = os.path.join(ens_root, make_ensemble_dirname(run_ids, weights=weights))
+        os.makedirs(ensemble_dir, exist_ok=True)
 
         ens_metrics = {
             "ensemble_id": ensemble_id,
@@ -1573,21 +1616,43 @@ def main():
             y_true_val,
             y_pred_val,
             class_names,
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_val.json"),
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_val.csv"),
+            os.path.join(ensemble_dir, "per_class_metrics_val.json"),
+            os.path.join(ensemble_dir, "per_class_metrics_val.csv"),
         )
         val_confusion = build_confusion_payload(y_true_val, y_pred_val, class_names)
         test_per_class = save_per_class_metrics(
             y_true,
             y_pred,
             class_names,
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_test.json"),
-            os.path.join(ens_dir, f"{ensemble_id}_per_class_test.csv"),
+            os.path.join(ensemble_dir, "per_class_metrics_test.json"),
+            os.path.join(ensemble_dir, "per_class_metrics_test.csv"),
         )
         test_confusion = build_confusion_payload(y_true, y_pred, class_names)
 
-        ens_metrics["val_per_class_metrics_path"] = f"{ensemble_id}_per_class_val.json"
-        ens_metrics["test_per_class_metrics_path"] = f"{ensemble_id}_per_class_test.json"
+        save_confusion_figure(
+            np.array(val_confusion["matrix"]),
+            class_names,
+            os.path.join(ensemble_dir, "confusion_val.png"),
+            "Ensemble validation confusion matrix",
+        )
+        save_confusion_figure(
+            np.array(test_confusion["matrix"]),
+            class_names,
+            os.path.join(ensemble_dir, "confusion_test.png"),
+            "Ensemble test confusion matrix",
+        )
+
+        report_val = classification_report(y_true_val, y_pred_val, target_names=class_names, digits=4, zero_division=0)
+        with open(os.path.join(ensemble_dir, "classification_report_val.txt"), "w") as f:
+            f.write(report_val)
+
+        report_test = classification_report(y_true, y_pred, target_names=class_names, digits=4, zero_division=0)
+        with open(os.path.join(ensemble_dir, "classification_report_test.txt"), "w") as f:
+            f.write(report_test)
+
+        ens_metrics["ensemble_dir"] = os.path.relpath(ensemble_dir, args.out_root)
+        ens_metrics["val_per_class_metrics_path"] = os.path.join(ens_metrics["ensemble_dir"], "per_class_metrics_val.json")
+        ens_metrics["test_per_class_metrics_path"] = os.path.join(ens_metrics["ensemble_dir"], "per_class_metrics_test.json")
         ens_metrics["val_confusion_matrix"] = val_confusion["matrix"]
         ens_metrics["test_confusion_matrix"] = test_confusion["matrix"]
         ens_metrics["val_accuracy"] = float(val_per_class["accuracy"])
@@ -1597,9 +1662,13 @@ def main():
         ens_metrics["test_macro_f1"] = float(test_per_class["macro_f1"])
         ens_metrics["test_weighted_f1"] = float(test_per_class["weighted_f1"])
 
-        out_path = os.path.join(ens_dir, f"{ensemble_id}.json")
+        out_path = os.path.join(ensemble_dir, "ensemble_metrics.json")
         with open(out_path, "w") as f:
             json.dump(ens_metrics, f, indent=2)
+        pd.DataFrame([{
+            key: (json.dumps(value) if isinstance(value, (list, dict)) else value)
+            for key, value in ens_metrics.items()
+        }]).to_csv(os.path.join(ensemble_dir, "ensemble_metrics.csv"), index=False)
 
         save_records_table(
             collect_ensemble_records(args.out_root),
