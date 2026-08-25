@@ -1,0 +1,196 @@
+{
+  "ensemble_id": "1fd551501d2e",
+  "ensemble_members": [
+    "wst1__resnet_small__ep40__seed0",
+    "wst1__resnet_small__ep40__seed2"
+  ],
+  "weights": null,
+  "feature_types": [
+    "wst1",
+    "wst1"
+  ],
+  "input_lengths": [
+    32000,
+    32000
+  ],
+  "ensemble_size": 2,
+  "val_accuracy": 0.18144611186903137,
+  "val_macro_f1": 0.038394919168591224,
+  "val_weighted_f1": 0.055732870389332965,
+  "n_val": 733,
+  "test_accuracy": 0.18144611186903137,
+  "test_macro_f1": 0.038394919168591224,
+  "test_weighted_f1": 0.055732870389332965,
+  "n_test": 733,
+  "val_inference_time_sec": 8.909339338999416,
+  "val_inference_time_ms_per_sample": 12.15462392769361,
+  "test_inference_time_sec": 0.225733682000282,
+  "test_inference_time_ms_per_sample": 0.30795863847241745,
+  "ensemble_dir": "ensemble_runs/wst1__resnet_small__ep40__seed0__PLUS__wst1__resnet_small__ep40__seed2",
+  "val_per_class_metrics_path": "ensemble_runs/wst1__resnet_small__ep40__seed0__PLUS__wst1__resnet_small__ep40__seed2/per_class_metrics_val.json",
+  "test_per_class_metrics_path": "ensemble_runs/wst1__resnet_small__ep40__seed0__PLUS__wst1__resnet_small__ep40__seed2/per_class_metrics_test.json",
+  "val_confusion_matrix": [
+    [
+      0,
+      0,
+      37,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      28,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      133,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      76,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      54,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      91,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      212,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      102,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "test_confusion_matrix": [
+    [
+      0,
+      0,
+      37,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      28,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      133,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      76,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      54,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      91,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      212,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      102,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  ]
+}

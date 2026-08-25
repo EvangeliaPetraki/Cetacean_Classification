@@ -1,0 +1,14 @@
+                                 precision    recall  f1-score   support
+
+         AtlanticSpottedDolphin     1.0000    1.0000    1.0000        37
+              BottlenoseDolphin     1.0000    1.0000    1.0000        28
+                  CommonDolphin     0.9925    1.0000    0.9963       133
+               FalseKillerWhale     1.0000    1.0000    1.0000        76
+         Grampus_Risso'sDolphin     0.9818    1.0000    0.9908        54
+Short_Finned(Pacific)PilotWhale     1.0000    0.9890    0.9945        91
+                     SpermWhale     0.9953    1.0000    0.9976       212
+                 StripedDolphin     1.0000    0.9804    0.9901       102
+
+                       accuracy                         0.9959       733
+                      macro avg     0.9962    0.9962    0.9962       733
+                   weighted avg     0.9959    0.9959    0.9959       733

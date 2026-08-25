@@ -1,0 +1,79 @@
+{
+  "ensemble_id": "f0b1faecca30",
+  "ensemble_folder": "mel__mobilenetv3_small__ep40__seed0__PLUS__mel__mobilenetv3_small__ep40__seed1",
+  "members": [
+    "mel__mobilenetv3_small__ep40__seed0",
+    "mel__mobilenetv3_small__ep40__seed1"
+  ],
+  "n_members": 2,
+  "member_features": [
+    "mel",
+    "mel"
+  ],
+  "member_models": [
+    "mobilenetv3_small",
+    "mobilenetv3_small"
+  ],
+  "member_input_lengths": [
+    32000,
+    32000
+  ],
+  "device": "cpu",
+  "total_params": 3051536,
+  "batch_results": [
+    {
+      "batch_size": 1,
+      "signal_duration_sec": 0.6722689075630253,
+      "n_unique_feature_groups": 1,
+      "feature_extraction_total": {
+        "mean_batch_latency_sec": 0.0007007000013254583
+      },
+      "ensemble_forward": {
+        "repeats": 100,
+        "warmup": 20,
+        "batch_size": 1,
+        "n_members": 2,
+        "mean_batch_latency_sec": 0.013891118997707962,
+        "std_batch_latency_sec": 0.002729720988197657,
+        "mean_sample_latency_sec": 0.013891118997707962,
+        "throughput_samples_per_sec": 71.98844097189004
+      },
+      "realtime_factors": {
+        "Ft_model": 0.020663039509090594,
+        "Ft_end_to_end": 0.02170533076106221
+      },
+      "end_to_end": {
+        "mean_batch_latency_sec": 0.014591818999033421,
+        "mean_sample_latency_sec": 0.014591818999033421,
+        "throughput_samples_per_sec": 68.5315518282019
+      }
+    },
+    {
+      "batch_size": 64,
+      "signal_duration_sec": 0.6722689075630253,
+      "n_unique_feature_groups": 1,
+      "feature_extraction_total": {
+        "mean_batch_latency_sec": 0.01188474399736151
+      },
+      "ensemble_forward": {
+        "repeats": 100,
+        "warmup": 20,
+        "batch_size": 64,
+        "n_members": 2,
+        "mean_batch_latency_sec": 0.28491308500175366,
+        "std_batch_latency_sec": 0.03692185536602379,
+        "mean_sample_latency_sec": 0.004451766953152401,
+        "throughput_samples_per_sec": 224.62990774750156
+      },
+      "realtime_factors": {
+        "Ft_model": 0.006622003342814196,
+        "Ft_end_to_end": 0.006898230791190371
+      },
+      "end_to_end": {
+        "mean_batch_latency_sec": 0.29679782899911517,
+        "mean_sample_latency_sec": 0.0046374660781111745,
+        "throughput_samples_per_sec": 215.63500048442336
+      }
+    }
+  ]
+}

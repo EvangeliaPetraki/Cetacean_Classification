@@ -1,0 +1,68 @@
+{
+  "per_class": [
+    {
+      "class_name": "AtlanticSpottedDolphin",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 37
+    },
+    {
+      "class_name": "BottlenoseDolphin",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 28
+    },
+    {
+      "class_name": "CommonDolphin",
+      "precision": 0.1839557399723375,
+      "recall": 1.0,
+      "f1": 0.3107476635514019,
+      "support": 133
+    },
+    {
+      "class_name": "FalseKillerWhale",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 76
+    },
+    {
+      "class_name": "Grampus_Risso'sDolphin",
+      "precision": 1.0,
+      "recall": 0.09259259259259259,
+      "f1": 0.1694915254237288,
+      "support": 54
+    },
+    {
+      "class_name": "Short_Finned(Pacific)PilotWhale",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 91
+    },
+    {
+      "class_name": "SpermWhale",
+      "precision": 1.0,
+      "recall": 0.02358490566037736,
+      "f1": 0.04608294930875576,
+      "support": 212
+    },
+    {
+      "class_name": "StripedDolphin",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 102
+    }
+  ],
+  "accuracy": 0.19508867667121418,
+  "macro_f1": 0.0657902672854858,
+  "weighted_f1": 0.08219859055753619,
+  "macro_precision": 0.2729944674965422,
+  "macro_recall": 0.13952218728162125,
+  "weighted_precision": 0.3962702775120339,
+  "weighted_recall": 0.19508867667121418,
+  "support": 733
+}

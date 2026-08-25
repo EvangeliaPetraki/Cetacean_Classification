@@ -1,0 +1,9 @@
+run_id,feature_type,model,n_classes,total_samples,total_tp,total_fp,total_fn,overall_precision,overall_recall,overall_auc_ovr_approx_macro,overall_auc_ovr_approx_weighted,report_path
+mel__efficientnet_b0__ep40__seed0,mel,efficientnet_b0,8,733,724,9,9,0.9877216916780355,0.9877216916780355,0.9935244326996466,0.9922185385368915,./best_models\mel__efficientnet_b0__ep40__seed0\classification_report_test.txt
+mel__mobilenetv3_small__ep40__seed2,mel,mobilenetv3_small,8,733,728,5,5,0.9931787175989086,0.9931787175989086,0.995097322466301,0.9956775705117513,./best_models\mel__mobilenetv3_small__ep40__seed2\classification_report_test.txt
+mel__resnet_small__ep60__seed0,mel,resnet_small,8,733,715,18,18,0.975443383356071,0.975443383356071,0.9883378000633767,0.985340509601049,./best_models\mel__resnet_small__ep60__seed0\classification_report_test.txt
+mel__tinycnn__ep60__seed0,mel,tinycnn,8,733,644,89,89,0.878581173260573,0.878581173260573,0.9204246430286158,0.9300542070744348,./best_models\mel__tinycnn__ep60__seed0\classification_report_test.txt
+wst1__efficientnet_b0__ep20__seed2,wst1,efficientnet_b0,8,733,716,17,17,0.9768076398362893,0.9768076398362893,0.9801140749248097,0.9854980650088282,./best_models\wst1__efficientnet_b0__ep20__seed2\classification_report_test.txt
+wst1__mobilenetv3_small__ep60__seed1,wst1,mobilenetv3_small,8,733,720,13,13,0.9822646657571623,0.9822646657571623,0.9850840161114444,0.9887005848302268,./best_models\wst1__mobilenetv3_small__ep60__seed1\classification_report_test.txt
+wst1__resnet_small__ep40__seed2,wst1,resnet_small,8,733,724,9,9,0.9877216916780355,0.9877216916780355,0.9942853923314471,0.9926267304445526,./best_models\wst1__resnet_small__ep40__seed2\classification_report_test.txt
+wst1__tinycnn__ep20__seed0,wst1,tinycnn,8,733,576,157,157,0.7858117326057299,0.7858117326057299,0.828927171175426,0.8665611738342611,./best_models\wst1__tinycnn__ep20__seed0\classification_report_test.txt

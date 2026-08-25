@@ -1,0 +1,11 @@
+{
+  "feature": "mel",
+  "model": "resnet_small",
+  "epochs": 60,
+  "seed": 0,
+  "lr": 0.001,
+  "weight_decay": 0.001,
+  "patience": 7,
+  "wst_J": 8,
+  "wst_Q": 14
+}

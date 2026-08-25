@@ -1,0 +1,11 @@
+{
+  "feature": "wst1",
+  "model": "efficientnet_b0",
+  "epochs": 20,
+  "seed": 2,
+  "lr": 0.001,
+  "weight_decay": 0.001,
+  "patience": 7,
+  "wst_J": 8,
+  "wst_Q": 14
+}
