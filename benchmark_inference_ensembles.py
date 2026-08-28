@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import platform
 import argparse
 from typing import Dict, List, Tuple, Optional
 
@@ -699,6 +700,12 @@ def main():
     parser.add_argument("--batch_sizes", type=int, nargs="+", default=[1, 64])
     parser.add_argument("--repeats", type=int, default=100)
     parser.add_argument("--warmup", type=int, default=20)
+    parser.add_argument(
+        "--result_suffix",
+        type=str,
+        default="",
+        help="Suffix for output filenames, e.g. '_rpi5', to avoid overwriting existing benchmark results",
+    )
     args = parser.parse_args()
 
     device = get_device(args.device)
@@ -785,6 +792,9 @@ def main():
             "member_models": [c["model_name"] for c in member_cfgs],
             "member_input_lengths": [c["input_length"] for c in member_cfgs],
             "device": str(device),
+            "torch_version": torch.__version__,
+            "num_threads": int(torch.get_num_threads()),
+            "platform": platform.platform(),
             "total_params": total_params,
             "batch_results": [],
         }
@@ -860,7 +870,7 @@ def main():
             }
             ensemble_result["batch_results"].append(batch_record)
 
-        out_path = os.path.join(ensemble_dir, "inference_benchmark_ensemble.json")
+        out_path = os.path.join(ensemble_dir, f"inference_benchmark_ensemble{args.result_suffix}.json")
         with open(out_path, "w") as f:
             json.dump(ensemble_result, f, indent=2)
         print(f"[Save] {out_path}")
@@ -891,7 +901,7 @@ def main():
     if summary_rows:
         import pandas as pd
         df = pd.DataFrame(summary_rows)
-        summary_csv = os.path.join(args.ensembles_root, "inference_benchmark_ensemble_summary.csv")
+        summary_csv = os.path.join(args.ensembles_root, f"inference_benchmark_ensemble_summary{args.result_suffix}.csv")
         df.to_csv(summary_csv, index=False)
         print(f"[Done] Wrote summary to {summary_csv}")
 
