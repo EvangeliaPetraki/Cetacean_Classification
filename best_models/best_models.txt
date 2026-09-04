@@ -14,6 +14,7 @@ Resnet - mel__resnet_small__ep60__seed0
 
 https://hpc.auth.gr/pun/sys/dashboard/files/fs//home/f/fratzeska/E/Cetacean_Classification/runs_all/mel__resnet_small__ep60__seed0/classification_report_test.txt
 
+
 tinycnn - mel__tinycnn__ep60__seed0 
 
 https://hpc.auth.gr/pun/sys/dashboard/files/fs//home/f/fratzeska/E/Cetacean_Classification/runs_all/mel__tinycnn__ep60__seed0/classification_report_test.txt

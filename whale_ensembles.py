@@ -970,7 +970,7 @@ def save_confusion_figure(
             )
 
     plt.tight_layout()
-    plt.savefig(out_path, dpi=200)
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close()
 
 

@@ -706,6 +706,15 @@ def main():
         default="",
         help="Suffix for output filenames, e.g. '_rpi5', to avoid overwriting existing benchmark results",
     )
+    parser.add_argument(
+        "--only",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Only benchmark ensemble folders whose name contains one of these substrings "
+             "(e.g. --only mel__resnet_small). Default: every ensemble under --ensembles_root. "
+             "The summary CSV is merged, so rows for other ensembles are preserved.",
+    )
     args = parser.parse_args()
 
     device = get_device(args.device)
@@ -722,6 +731,12 @@ def main():
         for entry in sorted(os.listdir(args.ensembles_root))
         if os.path.isdir(os.path.join(args.ensembles_root, entry))
     ]
+
+    if args.only:
+        ensemble_dirs = [d for d in ensemble_dirs if any(tok in os.path.basename(d) for tok in args.only)]
+        if not ensemble_dirs:
+            raise SystemExit(f"--only {args.only} matched no ensemble folders under {args.ensembles_root}")
+        print(f"[Filter] --only -> {[os.path.basename(d) for d in ensemble_dirs]}")
 
     data_cache: Dict[Tuple[int, int], Tuple[torch.Tensor, torch.Tensor, Dict[str, np.ndarray], List[str]]] = {}
     results = []
@@ -900,10 +915,23 @@ def main():
 
     if summary_rows:
         import pandas as pd
-        df = pd.DataFrame(summary_rows)
+        new_df = pd.DataFrame(summary_rows)
         summary_csv = os.path.join(args.ensembles_root, f"inference_benchmark_ensemble_summary{args.result_suffix}.csv")
-        df.to_csv(summary_csv, index=False)
-        print(f"[Done] Wrote summary to {summary_csv}")
+
+        combined = new_df
+        if os.path.exists(summary_csv):
+            try:
+                old_df = pd.read_csv(summary_csv)
+                benched = set(new_df["ensemble_folder"])
+                old_df = old_df[~old_df["ensemble_folder"].isin(benched)]
+                combined = pd.concat([old_df, new_df], ignore_index=True)
+            except Exception as e:
+                print(f"[Warn] could not merge with existing {summary_csv} ({e}); overwriting instead")
+
+        combined = combined.sort_values(["ensemble_folder", "batch_size"]).reset_index(drop=True)
+        combined.to_csv(summary_csv, index=False)
+        print(f"[Done] Wrote summary to {summary_csv} "
+              f"({len(new_df)} row(s) benchmarked now, {len(combined)} total)")
 
 
 if __name__ == "__main__":
