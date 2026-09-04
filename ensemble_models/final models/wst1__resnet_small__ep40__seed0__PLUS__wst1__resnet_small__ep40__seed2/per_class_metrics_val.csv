@@ -1,9 +1,0 @@
-class_name,precision,recall,f1,support
-AtlanticSpottedDolphin,0.0,0.0,0.0,37
-BottlenoseDolphin,0.0,0.0,0.0,28
-CommonDolphin,0.18144611186903137,1.0,0.3071593533487298,133
-FalseKillerWhale,0.0,0.0,0.0,76
-Grampus_Risso'sDolphin,0.0,0.0,0.0,54
-Short_Finned(Pacific)PilotWhale,0.0,0.0,0.0,91
-SpermWhale,0.0,0.0,0.0,212
-StripedDolphin,0.0,0.0,0.0,102
