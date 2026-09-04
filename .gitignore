@@ -4,6 +4,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+# .sh files
+*.sh
+
 # Virtual environments
 .venv/
 env/
@@ -13,6 +16,7 @@ venv/
 data/*
 literature/
 paper/
+cache/*
 
 # Model checkpoints
 *.pt
@@ -26,10 +30,23 @@ paper/
 *.flac
 
 # Logs & outputs
+RESULTS/*
 *.log
 *.out
 *.err
+*.txt
+*.png
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Models
+best_models/*
+ensemble_models/*
+
+# Temporary files
+temp*.py
+
+# Benchmarking results
+bench*/*
 
