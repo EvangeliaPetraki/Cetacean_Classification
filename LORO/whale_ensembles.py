@@ -1815,6 +1815,15 @@ def main():
                              "composition, then exit before any training.")
     parser.add_argument("--ensemble_runs", type=str, default="", help="Comma-separated run_ids to soft-vote over their OOF predictions")
     parser.add_argument("--ensemble_weights", type=str, default="", help="Optional comma-separated weights, same length as ensemble_runs")
+    parser.add_argument("--features", type=str, nargs="+", default=["mel", "wst1"], choices=["mel", "wst1"],
+                        help="Feature representations to train (default: both)")
+    parser.add_argument("--models", type=str, nargs="+",
+                        default=["resnet_small", "tinycnn", "mobilenetv3_small", "efficientnet_b0"],
+                        help="Model architectures to train (default: all four)")
+    parser.add_argument("--epoch_budgets", type=int, nargs="+", default=[20, 40, 60],
+                        help="Max-epoch budgets to train (default: 20 40 60)")
+    parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2],
+                        help="Random seeds to train (default: 0 1 2)")
     args = parser.parse_args()
 
     print(f"[Paths] out_root = {os.path.abspath(args.out_root)}", flush=True)
@@ -1870,17 +1879,13 @@ def main():
         return
 
     # -----------------------------
-    # Experiment grid (unchanged)
+    # Experiment grid (same defaults as before; override any axis via CLI to
+    # train only a subset, e.g. --models resnet_small --epoch_budgets 60)
     # -----------------------------
-    features = ["mel", "wst1"]
-    models = [
-        "resnet_small",
-        "tinycnn",
-        "mobilenetv3_small",
-        "efficientnet_b0",
-    ]
-    epoch_budgets = [20, 40, 60]
-    seeds = [0, 1, 2]
+    features = args.features
+    models = args.models
+    epoch_budgets = args.epoch_budgets
+    seeds = args.seeds
 
     experiments: List[ExpCfg] = []
     for feat in features:
