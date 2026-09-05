@@ -1007,6 +1007,7 @@ def save_per_class_metrics(
     report = classification_report(
         y_true,
         y_pred,
+        labels=list(range(len(class_names))),
         target_names=class_names,
         digits=4,
         output_dict=True,
@@ -1607,8 +1608,8 @@ def run_experiment(
         os.path.join(out_dir, _lp("confusion_test.png")), f"{run_id} OOF confusion matrix",
     )
     with open(os.path.join(out_dir, _lp("classification_report_test.txt")), "w") as f:
-        f.write(classification_report(y_true_all, oof_pred, target_names=class_names,
-                                      digits=4, zero_division=0))
+        f.write(classification_report(y_true_all, oof_pred, labels=list(range(len(class_names))),
+                                      target_names=class_names, digits=4, zero_division=0))
     oof_per_class = save_per_class_metrics(
         y_true_all, oof_pred, class_names,
         os.path.join(out_dir, _lp("per_class_metrics_test.json")),
@@ -1740,7 +1741,8 @@ def _run_ensemble_oof(args, class_names):
         os.path.join(ensemble_dir, _lp("confusion_test.png")), "Ensemble OOF confusion matrix",
     )
     with open(os.path.join(ensemble_dir, _lp("classification_report_test.txt")), "w") as f:
-        f.write(classification_report(y_true, y_pred, target_names=class_names, digits=4, zero_division=0))
+        f.write(classification_report(y_true, y_pred, labels=list(range(len(class_names))),
+                                      target_names=class_names, digits=4, zero_division=0))
     ens_per_class = save_per_class_metrics(
         y_true, y_pred, class_names,
         os.path.join(ensemble_dir, _lp("per_class_metrics_test.json")),
