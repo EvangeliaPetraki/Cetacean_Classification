@@ -52,7 +52,7 @@ from scipy.signal import resample
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch.nn.functional import pad
 import torch.nn.functional as F
 import torchaudio
@@ -374,6 +374,101 @@ def grouped_train_val_split(
     gss = GroupShuffleSplit(n_splits=1, test_size=val_frac, random_state=seed)
     tr_rel, va_rel = next(gss.split(np.zeros(len(train_pool_idx)), groups=g_pool))
     return train_pool_idx[tr_rel], train_pool_idx[va_rel]
+
+
+# -----------------------------
+#   Class balancing (train split only)
+# -----------------------------
+def _recs_per_class(idx: np.ndarray, y_all: np.ndarray, groups: np.ndarray,
+                    num_classes: int) -> List[int]:
+    """Distinct source recordings per class within `idx` (class order = label id)."""
+    idx = np.asarray(idx, dtype=int)
+    y_all = np.asarray(y_all)
+    groups = np.asarray(groups)
+    out = [0] * num_classes
+    for c in range(num_classes):
+        m = idx[y_all[idx] == c]
+        out[c] = int(len(set(groups[m].tolist())))
+    return out
+
+
+def _cap_majority_recordings(
+    tr_idx: np.ndarray,
+    y_all: np.ndarray,
+    groups: np.ndarray,
+    cap: int,
+    seed: int,
+) -> np.ndarray:
+    """
+    Down-cap over-represented classes to at most `cap` source recordings each by
+    dropping WHOLE recordings (a recording is never split). Classes already at or
+    below `cap` are untouched. Deterministic given `seed`.
+
+    MUST be called with training-split indices only -- never val/test.
+    """
+    if not cap or cap <= 0:
+        return np.asarray(tr_idx, dtype=int)
+    tr_idx = np.asarray(tr_idx, dtype=int)
+    y_all = np.asarray(y_all)
+    groups = np.asarray(groups)
+    rng = np.random.default_rng(seed)
+
+    y_tr = y_all[tr_idx]
+    keep_mask = np.ones(len(tr_idx), dtype=bool)
+    for c in np.unique(y_tr):
+        c_pos = np.where(y_tr == c)[0]                       # positions in tr_idx
+        recs = np.array(sorted(set(groups[tr_idx[c_pos]].tolist())))
+        if len(recs) <= cap:
+            continue
+        keep_recs = np.array(sorted(
+            rng.choice(recs, size=int(cap), replace=False).tolist()
+        ))
+        drop_pos = c_pos[~np.isin(groups[tr_idx[c_pos]], keep_recs)]
+        keep_mask[drop_pos] = False
+    return np.sort(tr_idx[keep_mask])
+
+
+def compute_class_weights(
+    y_train: np.ndarray,
+    num_classes: int,
+    scheme: str = "none",
+    beta: float = 0.999,
+    w_max: float = 10.0,
+) -> Optional[torch.Tensor]:
+    """
+    Per-class weights from TRAIN-split label counts.
+
+      none      -> None                 (plain CrossEntropy / uniform sampling)
+      inv       -> w_c proportional to 1 / n_c
+      inv_sqrt  -> w_c proportional to 1 / sqrt(n_c)
+      effective -> w_c proportional to (1 - beta) / (1 - beta**n_c)   (Cui et al. 2019)
+
+    Mean-normalised to ~1 over classes present in y_train, then clipped to
+    [0, w_max]. Classes absent from y_train get weight 0. Returns a float32
+    tensor of length num_classes, or None for scheme="none".
+    """
+    if scheme == "none":
+        return None
+    y_train = np.asarray(y_train)
+    counts = np.bincount(y_train, minlength=num_classes).astype(np.float64)
+    present = counts > 0
+    safe = np.maximum(counts, 1.0)
+
+    if scheme == "inv":
+        w = 1.0 / safe
+    elif scheme == "inv_sqrt":
+        w = 1.0 / np.sqrt(safe)
+    elif scheme == "effective":
+        w = (1.0 - beta) / (1.0 - np.power(beta, safe))
+    else:
+        raise ValueError(f"Unknown class_weight scheme: {scheme!r}")
+
+    w[~present] = 0.0
+    if present.any():
+        w = w / w[present].mean()
+    w = np.clip(w, 0.0, w_max)
+    return torch.tensor(w, dtype=torch.float32)
+
 
 class MelDataset(Dataset):
     def __init__(
@@ -1397,6 +1492,12 @@ class ExpCfg:
     lr: float = 1e-3
     weight_decay: float = 1e-3
     patience: int = 7
+    # --- class balancing (all computed per fold from the TRAIN split only) ---
+    cap_majority_recordings: int = 0     # 0 = off; else ceiling on train recs/class
+    class_weight: str = "none"           # none | inv | inv_sqrt | effective
+    class_weight_beta: float = 0.999     # for class_weight="effective"
+    class_weight_max: float = 10.0       # clip weights above this (post mean-norm)
+    balanced_sampler: bool = False       # WeightedRandomSampler (inv-freq) for train loader
     wst_J: int = 8          # sensible default from your trials
     wst_Q: int = 14         # sensible default from your trials
 
@@ -1452,6 +1553,25 @@ def run_experiment(
     out_dir = os.path.join(out_root, run_id)
     folds_dir = os.path.join(out_dir, "folds")
     os.makedirs(folds_dir, exist_ok=True)
+
+    # Guard against silently mixing balancing arms in one --out_root: run_id does
+    # not encode the balancing knobs, so per-fold resume would keep stale preds.
+    _cfg_path = os.path.join(out_dir, _lp("config.json"))
+    if os.path.exists(_cfg_path):
+        try:
+            _prev = json.load(open(_cfg_path))
+            _knobs = ("cap_majority_recordings", "class_weight", "class_weight_beta",
+                      "class_weight_max", "balanced_sampler")
+            # Absent in a legacy config.json == this run's default (no false alarm).
+            _diff = {k: (_prev[k], getattr(cfg, k))
+                     for k in _knobs
+                     if k in _prev and _prev[k] != getattr(cfg, k)}
+            if _diff:
+                print(f"[WARN] {run_id}: existing run in this --out_root used different "
+                      f"balancing knobs {_diff}. Per-fold resume KEEPS the old predictions; "
+                      f"use a fresh --out_root for a new arm.", flush=True)
+        except Exception:
+            pass
 
     num_classes = int(y_int.max().item() + 1)
     N = len(y_int)
@@ -1531,6 +1651,29 @@ def run_experiment(
         if len(va_idx) == 0:
             va_idx = tr_idx  # impossible with this data; guards train_one_run
 
+        # --- class balancing: TRAIN split only (va_idx / test_idx untouched) ---
+        if cfg.cap_majority_recordings:
+            tr_idx = _cap_majority_recordings(
+                tr_idx, y_true_all, groups,
+                cap=int(cfg.cap_majority_recordings), seed=seed_f,
+            )
+        y_tr = y_true_all[tr_idx]
+        cls_w = compute_class_weights(
+            y_tr, num_classes,
+            scheme=cfg.class_weight,
+            beta=cfg.class_weight_beta,
+            w_max=cfg.class_weight_max,
+        )
+        use_sampler = bool(cfg.balanced_sampler)
+        print(
+            f"[Balance] fold {fold_id} | train clips={len(tr_idx)} "
+            f"recs/class={_recs_per_class(tr_idx, y_true_all, groups, num_classes)} "
+            f"| class_weight={cfg.class_weight} "
+            f"weights={None if cls_w is None else [round(float(v), 2) for v in cls_w]} "
+            f"| balanced_sampler={use_sampler}",
+            flush=True,
+        )
+
         if cfg.feature == "mel":
             train_ds = MelDataset(X[tr_idx], y_int[tr_idx], sr=sr, n_mels=64, train=True)
             val_ds = MelDataset(X[va_idx], y_int[va_idx], sr=sr, n_mels=64, train=False)
@@ -1540,7 +1683,21 @@ def run_experiment(
             val_ds = WST1Dataset(SX1[va_idx], y_int[va_idx])
             test_ds = WST1Dataset(SX1[test_idx], y_int[test_idx])
 
-        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+        if use_sampler:
+            samp_class_w = compute_class_weights(
+                y_tr, num_classes, scheme="inv", w_max=cfg.class_weight_max,
+            )  # inverse-frequency, never None
+            per_sample_w = samp_class_w[torch.as_tensor(y_tr, dtype=torch.long)].double()
+            train_sampler = WeightedRandomSampler(
+                per_sample_w, num_samples=len(y_tr), replacement=True,
+            )
+            train_loader = DataLoader(
+                train_ds, batch_size=batch_size, sampler=train_sampler, num_workers=0,
+            )
+        else:
+            train_loader = DataLoader(
+                train_ds, batch_size=batch_size, shuffle=True, num_workers=0,
+            )
         val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
         test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
 
@@ -1558,6 +1715,7 @@ def run_experiment(
             patience=cfg.patience,
             out_dir=fdir,
             class_names=class_names,
+            class_weights=cls_w,
         )
         # train_one_run has reloaded best.pt into `model`
         y_true_f, prob_f = predict_proba(model, test_loader, device)
@@ -1822,10 +1980,26 @@ def main():
     parser.add_argument("--models", type=str, nargs="+",
                         default=["resnet_small", "tinycnn", "mobilenetv3_small", "efficientnet_b0"],
                         help="Model architectures to train (default: all four)")
-    parser.add_argument("--epoch_budgets", type=int, nargs="+", default=[20, 40, 60],
-                        help="Max-epoch budgets to train (default: 20 40 60)")
+    parser.add_argument("--epoch_budgets", type=int, nargs="+", default=[40],
+                        help="Max-epoch budget(s) to train (default: 40). Early stopping "
+                             "(patience) usually halts well before this; pass e.g. "
+                             "'20 40 60' to sweep the budget as a grid axis.")
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2],
                         help="Random seeds to train (default: 0 1 2)")
+    parser.add_argument("--cap_majority_recordings", type=int, default=0,
+                        help="Ceiling on TRAIN recordings per class (0 = off). Drops whole "
+                             "recordings from over-represented classes; val/test untouched.")
+    parser.add_argument("--class_weight", type=str, default="none",
+                        choices=["none", "inv", "inv_sqrt", "effective"],
+                        help="Per-class CrossEntropy weighting, computed per fold from the "
+                             "TRAIN split (default: none).")
+    parser.add_argument("--class_weight_beta", type=float, default=0.999,
+                        help="Beta for --class_weight effective (Cui et al. effective-number).")
+    parser.add_argument("--class_weight_max", type=float, default=10.0,
+                        help="Clip per-class weights above this (after mean-normalisation).")
+    parser.add_argument("--balanced_sampler", action="store_true",
+                        help="Use an inverse-frequency WeightedRandomSampler for the train "
+                             "loader (independent of --class_weight).")
     args = parser.parse_args()
 
     print(f"[Paths] out_root = {os.path.abspath(args.out_root)}", flush=True)
@@ -1882,7 +2056,7 @@ def main():
 
     # -----------------------------
     # Experiment grid (same defaults as before; override any axis via CLI to
-    # train only a subset, e.g. --models resnet_small --epoch_budgets 60)
+    # train only a subset, e.g. --models resnet_small --epoch_budgets 20 60)
     # -----------------------------
     features = args.features
     models = args.models
@@ -1894,7 +2068,14 @@ def main():
         for model in models:
             for ep in epoch_budgets:
                 for sd in seeds:
-                    experiments.append(ExpCfg(feature=feat, model=model, epochs=ep, seed=sd))
+                    experiments.append(ExpCfg(
+                        feature=feat, model=model, epochs=ep, seed=sd,
+                        cap_majority_recordings=args.cap_majority_recordings,
+                        class_weight=args.class_weight,
+                        class_weight_beta=args.class_weight_beta,
+                        class_weight_max=args.class_weight_max,
+                        balanced_sampler=args.balanced_sampler,
+                    ))
 
     sx1_cache: Dict = {}  # order-1 scattering reused across folds AND configs
     for cfg in experiments:
