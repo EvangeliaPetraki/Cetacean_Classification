@@ -1500,6 +1500,7 @@ class ExpCfg:
     balanced_sampler: bool = False       # WeightedRandomSampler (inv-freq) for train loader
     wst_J: int = 8          # sensible default from your trials
     wst_Q: int = 14         # sensible default from your trials
+    run_tag: str = ""       # if set, appended to run_id ("__<tag>") -> new, non-colliding run folder
 
 
 def _per_recording_table(y_true: np.ndarray, y_pred: np.ndarray, groups: np.ndarray) -> List[Dict]:
@@ -1533,6 +1534,7 @@ def run_experiment(
     keep_fold_ckpt: bool = True,
     val_frac: float = 0.15,
     cv_scheme: str = "loro",
+    overwrite: bool = False,
 ):
     """
     Run one experiment configuration under recording-grouped cross-validation.
@@ -1549,7 +1551,8 @@ def run_experiment(
         loro_oof_predictions.npz, loro_per_recording_accuracy.csv,
         loro_folds_summary.csv, loro_config.json
     """
-    run_id = _lp(f"{cfg.feature}__{cfg.model}__ep{cfg.epochs}__seed{cfg.seed}")
+    run_id = _lp(f"{cfg.feature}__{cfg.model}__ep{cfg.epochs}__seed{cfg.seed}"
+                 + (f"__{cfg.run_tag}" if cfg.run_tag else ""))
     out_dir = os.path.join(out_root, run_id)
     folds_dir = os.path.join(out_dir, "folds")
     os.makedirs(folds_dir, exist_ok=True)
@@ -1619,7 +1622,11 @@ def run_experiment(
         pred_path = os.path.join(fdir, _lp("predictions.npz"))
 
         # ---- resume: reuse a completed fold (retrain if the file is unreadable) ----
-        if os.path.exists(pred_path):
+        # --overwrite skips this entirely so every fold is retrained, and the
+        # retrained fold's predictions.npz/best.pt overwrite the old ones in place.
+        if overwrite and os.path.exists(pred_path):
+            print(f"[Overwrite] {run_id} fold {fold_id}: retraining over existing checkpoint", flush=True)
+        elif os.path.exists(pred_path):
             try:
                 d = np.load(pred_path, allow_pickle=True)
                 ti = d["test_idx"].astype(int)
@@ -2000,7 +2007,27 @@ def main():
     parser.add_argument("--balanced_sampler", action="store_true",
                         help="Use an inverse-frequency WeightedRandomSampler for the train "
                              "loader (independent of --class_weight).")
+    parser.add_argument("--rerun", type=str, default=None,
+                        help="Model reuse policy for runs already in --out_root. Omit "
+                             "(default): resume — any fold with an existing "
+                             "folds/fold_XXX/predictions.npz is reused, not retrained (this is "
+                             "why a fresh run can print '[Resume] ... fold N' for every fold: "
+                             "matching checkpoints already existed under --out_root). Pass "
+                             "'overwrite' to force retraining every fold, overwriting the "
+                             "existing checkpoints/predictions in place. Pass any other string "
+                             "to tag this run instead: it is appended to every run_id "
+                             "('__<tag>'), so models train fresh into new, non-colliding run "
+                             "folders and the existing ones are left untouched.")
     args = parser.parse_args()
+
+    overwrite_runs = (args.rerun == "overwrite")
+    run_tag = args.rerun if (args.rerun and not overwrite_runs) else ""
+    if overwrite_runs:
+        print("[Rerun] --rerun overwrite: existing checkpoints/predictions in --out_root "
+              "will be retrained and overwritten in place.", flush=True)
+    elif run_tag:
+        print(f"[Rerun] --rerun {run_tag!r}: run_ids get a '__{run_tag}' suffix; "
+              f"existing runs in --out_root are left untouched.", flush=True)
 
     print(f"[Paths] out_root = {os.path.abspath(args.out_root)}", flush=True)
     print(f"[Paths] cache_dir = {os.path.abspath(args.cache_dir)}", flush=True)
@@ -2075,6 +2102,7 @@ def main():
                         class_weight_beta=args.class_weight_beta,
                         class_weight_max=args.class_weight_max,
                         balanced_sampler=args.balanced_sampler,
+                        run_tag=run_tag,
                     ))
 
     sx1_cache: Dict = {}  # order-1 scattering reused across folds AND configs
@@ -2095,6 +2123,7 @@ def main():
             keep_fold_ckpt=args.keep_fold_checkpoints,
             val_frac=args.val_frac,
             cv_scheme=args.cv,
+            overwrite=overwrite_runs,
         )
 
     # After all runs, summarize.
